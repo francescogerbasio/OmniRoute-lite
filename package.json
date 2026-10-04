@@ -1,6 +1,7 @@
 {
   "name": "omniroute",
   "version": "3.8.52",
+  "packageManager": "pnpm@12.8.2",
   "description": "Unified AI router with 358 providers, RTK+Caveman compression, auto fallback, MCP/A2A, desktop, PWA, and OpenAI-compatible APIs.",
   "type": "module",
   "bin": {
@@ -64,8 +65,8 @@
     "!**/*.nft.json"
   ],
   "workspaces": [
-    "open-sse",
-    "packages/browser-pool"
+    "packages/*",
+    "open-sse"
   ],
   "engines": {
     "node": ">=22.22.2 <23 || >=24.0.0 <27"
@@ -468,16 +469,6 @@
     ],
     "*.{json,md,yml,yaml,css}": [
       "prettier --write"
-    ]
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "@swc/core",
-      "better-sqlite3",
-      "esbuild",
-      "omniroute",
-      "sharp"
     ]
   },
   "allowScripts": {

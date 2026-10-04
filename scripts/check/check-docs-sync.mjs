@@ -243,10 +243,13 @@ try {
     }
   }
 
-  // llm.txt mirrors must be exact copies (no translation)
-  checkI18nMirrorFile("llm.txt", llmPath);
-  // CHANGELOG.md mirrors are translations — check version sections and size, not exact content
-  checkI18nChangelogFile(changelogPath);
+  // Translated documentation is intentionally omitted from this fork.
+  if (fs.existsSync(i18nDocsPath)) {
+    checkI18nMirrorFile("llm.txt", llmPath);
+    checkI18nChangelogFile(changelogPath);
+  } else {
+    console.log("[docs-sync] docs/i18n omitted — skipping translation mirror checks");
+  }
 
   // Anti-regression: legacy duplicate docs that have been superseded must not return.
   // Use docs/reference/* as the source of truth.
