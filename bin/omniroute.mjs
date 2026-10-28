@@ -26,15 +26,14 @@ try {
 import { isNativeBinaryCompatible } from "../scripts/build/native-binary-compat.mjs";
 import { getNodeRuntimeSupport, getNodeRuntimeWarning } from "./nodeRuntimeSupport.mjs";
 import { getDefaultDataDir } from "./cli/data-dir.mjs";
-import { shouldProvisionStorageKey } from "./cli/utils/storageKeyProvision.mjs";
+import {
+  provisionStorageKey,
+  shouldProvisionStorageKey,
+} from "./cli/utils/storageKeyProvision.mjs";
 import { isVersionFastPath } from "./cli/utils/versionFastPath.mjs";
 import { parseEnvValue } from "./cli/utils/parseEnvValue.mjs";
 import { describeVolatileEnvWarning } from "./cli/utils/volatileEnvPath.mjs";
-import {
-  ensurePrivateDataDir,
-  tightenDataDirSecrets,
-  writePrivateFile,
-} from "./cli/privateDataDir.mjs";
+import { tightenDataDirSecrets, writePrivateFile } from "./cli/privateDataDir.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -238,60 +237,25 @@ loadEnvFile();
 // key or write ~/.omniroute-lite/.env — running a read-only command should never
 // mutate the data dir.
 if (shouldProvisionStorageKey(process.argv)) {
-  const { randomBytes } = await import("node:crypto");
-  const { existsSync, readFileSync } = await import("node:fs");
-  const { join } = await import("node:path");
-  const { homedir } = await import("node:os");
-
   // GHSA-2pg2-xm9r-8544: installs created before the fix have a world-readable .env and a
   // world-traversable data dir. Repair them on every run that touches encrypted storage
   // (best-effort; group bits are kept). Informational commands never reach this block.
-  tightenDataDirSecrets(process.env.DATA_DIR || join(homedir(), ".omniroute-lite"));
+  //
+  // Resolve through the shared CLI resolver (getDefaultDataDir): under XDG_CONFIG_HOME
+  // or Windows the runtime data dir is NOT ~/.omniroute-lite, and secrets must be
+  // tightened and persisted in the SAME directory the app resolves (issue #11).
+  const provisionDataDir = process.env.DATA_DIR || getDefaultDataDir();
+  tightenDataDirSecrets(provisionDataDir);
 
   if (!process.env.STORAGE_ENCRYPTION_KEY) {
     // Persist the key into DATA_DIR when set — that's the directory mounted as a volume in
     // Docker (where storage.sqlite lives), so the key survives `docker down` / `docker pull`.
-    // Writing only to ~/.omniroute-lite (the container home, not a volume) silently lost the key on
-    // container recreation, leaving the persisted encrypted DB undecryptable (regression of #1622).
-    const dataDir = process.env.DATA_DIR || join(homedir(), ".omniroute-lite");
-    const envPath = join(dataDir, ".env");
-    const dbPath = join(dataDir, "storage.sqlite");
-
-    // Safety guard: never auto-generate a fresh key when a database already exists in
-    // DATA_DIR. A new key cannot decrypt previously-encrypted credentials and would lock the
-    // user out (then the encryption layer aborts on every read). Mirrors bootstrapEnv's
-    // hasEncryptedCredentials guard. Restoring the previous key in DATA_DIR/.env recovers it.
-    // (#1622 follow-up — reported by Daniel Nach; original persistence by @Chewji9875)
-    if (existsSync(dbPath)) {
-      console.warn(
-        `  \x1b[33m⚠ STORAGE_ENCRYPTION_KEY is not set but a database already exists at\x1b[0m\n` +
-          `  \x1b[33m  ${dbPath}\x1b[0m\n` +
-          `  \x1b[33m  Not auto-generating a new key — it could not decrypt existing data. Restore your\x1b[0m\n` +
-          `  \x1b[33m  previous key in ${envPath}, or move/remove the database to start fresh.\x1b[0m`
-      );
-    } else {
-      // First run (no database yet) — generate and persist a fresh key.
-      // GHSA-2pg2-xm9r-8544: owner-only — .env holds the key to every stored credential.
-      ensurePrivateDataDir(dataDir);
-
-      const key = randomBytes(32).toString("hex");
-
-      // Read existing .env content or start fresh
-      let content = "";
-      if (existsSync(envPath)) {
-        content = readFileSync(envPath, "utf-8");
-      }
-
-      // Append key if not already present
-      if (!content.includes("STORAGE_ENCRYPTION_KEY=")) {
-        const separator = content.trim() ? "\n" : "";
-        const newContent = content.trimEnd() + separator + `STORAGE_ENCRYPTION_KEY=${key}`;
-        writePrivateFile(envPath, newContent + "\n");
-        console.log(`  \x1b[2m✨ Generated STORAGE_ENCRYPTION_KEY in ${envPath}\x1b[0m`);
-      }
-
-      // Set in process.env for immediate use
-      process.env.STORAGE_ENCRYPTION_KEY = key;
+    // Writing only to the default dir (the container home, not a volume) silently lost the
+    // key on container recreation, leaving the persisted encrypted DB undecryptable
+    // (regression of #1622).
+    const generatedKey = await provisionStorageKey(provisionDataDir);
+    if (generatedKey && !process.env.STORAGE_ENCRYPTION_KEY) {
+      process.env.STORAGE_ENCRYPTION_KEY = generatedKey;
     }
   }
 }

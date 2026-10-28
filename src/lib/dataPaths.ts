@@ -137,6 +137,19 @@ export function resolveWritableDataDir({ isCloud = false }: { isCloud?: boolean 
   // Cloud/serverless never owns a writable home dir; leave its sentinel alone.
   if (isCloud) return resolved;
 
+  // Issue #11 policy: pointing DATA_DIR explicitly at upstream's `~/.omniroute`
+  // stays legal (it is the operator's deliberate choice for migration/inspection),
+  // but it must never happen silently — sharing this directory shares provider
+  // credentials, storage and the CLI token salt with upstream OmniRoute.
+  if (configured && isSamePath(configured, getLegacyDotDataDir())) {
+    console.warn(
+      `[DATA_DIR] ⚠️  DATA_DIR points at upstream OmniRoute's directory ('${configured}'). ` +
+        `OmniRoute Lite will share provider credentials, storage and the CLI token salt ` +
+        `with upstream OmniRoute. This is intended only for a deliberate one-time ` +
+        `migration/inspection — unset DATA_DIR to isolate Lite in its default directory.`
+    );
+  }
+
   // #10428: a test/eval-probe run that never chose a DATA_DIR would otherwise open the
   // OPERATOR'S REAL database (~/.omniroute-lite/storage.sqlite — live provider credentials).
   // Redirect to a throwaway dir instead of throwing: the documented single-file command

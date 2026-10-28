@@ -109,7 +109,7 @@ export default function GetStarted() {
                   <span className="break-all">~/.omniroute-lite/db.json</span>
                   <br />
                   <span className="text-gray-500">{t("dataLocationWindows")}</span>{" "}
-                  <span className="break-all">%APPDATA%/omniroute/db.json</span>
+                  <span className="break-all">%APPDATA%/omniroute-lite/db.json</span>
                 </div>
               </div>
             </div>

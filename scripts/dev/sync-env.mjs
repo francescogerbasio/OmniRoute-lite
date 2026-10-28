@@ -69,17 +69,17 @@ const CRYPTO_SECRETS = {
 const ENCRYPTION_BOUND_KEYS = new Set([]);
 
 // ── Resolve DATA_DIR (mirrors bootstrap-env.mjs / dataPaths.ts) ─────────────
-function resolveDataDir(env = process.env) {
+export function resolveDataDir(env = process.env) {
   const configured = env.DATA_DIR?.trim();
   if (configured) return resolve(configured);
 
   if (process.platform === "win32") {
     const appData = env.APPDATA || join(homedir(), "AppData", "Roaming");
-    return join(appData, "omniroute");
+    return join(appData, "omniroute-lite");
   }
 
   const xdg = env.XDG_CONFIG_HOME?.trim();
-  if (xdg) return join(resolve(xdg), "omniroute");
+  if (xdg) return join(resolve(xdg), "omniroute-lite");
 
   return join(homedir(), ".omniroute-lite");
 }

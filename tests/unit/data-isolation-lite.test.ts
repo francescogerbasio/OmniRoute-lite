@@ -14,6 +14,7 @@ import {
 } from "../../src/lib/dataPaths.ts";
 import { resolveMitmDataDir } from "../../src/mitm/dataDir.ts";
 import { resolveDataDir as cliResolveDataDir } from "../../bin/cli/data-dir.mjs";
+import { resolveDataDir as syncEnvResolveDataDir } from "../../scripts/dev/sync-env.mjs";
 import { resolveDataDir as webdavResolveDataDir } from "../../scripts/dev/webdav-handler.mjs";
 import { bootstrapEnv } from "../../scripts/build/bootstrap-env.mjs";
 
@@ -124,6 +125,7 @@ test("resolver parity: explicit DATA_DIR wins for core, CLI, MITM and WebDAV", a
     assert.equal(cliResolveDataDir(), resolvedConfigured);
     assert.equal(resolveMitmDataDir(), resolvedConfigured);
     assert.equal(webdavResolveDataDir(), resolvedConfigured);
+    assert.equal(syncEnvResolveDataDir(), resolvedConfigured);
   });
 });
 
@@ -137,6 +139,7 @@ test("resolver parity: XDG_CONFIG_HOME → <xdg>/omniroute-lite for every resolv
     assert.equal(cliResolveDataDir(), expected);
     assert.equal(resolveMitmDataDir(), expected);
     assert.equal(webdavResolveDataDir(), expected);
+    assert.equal(syncEnvResolveDataDir(), expected);
   });
 });
 
@@ -152,6 +155,7 @@ test("win32 shape: %APPDATA%/omniroute-lite (core, CLI, MITM)", async () => {
       assert.equal(getDefaultDataDir(), expected);
       assert.equal(cliResolveDataDir(), expected);
       assert.equal(resolveMitmDataDir(), expected);
+      assert.equal(syncEnvResolveDataDir(), expected);
     } finally {
       if (originalDescriptor) {
         Object.defineProperty(process, "platform", originalDescriptor);
@@ -204,6 +208,41 @@ test("bootstrapEnv defaults to ~/.omniroute-lite and never creates the upstream 
   }
 });
 
+test("explicit DATA_DIR at upstream ~/.omniroute stays legal but is loudly warned; fixture untouched", async () => {
+  await withTempEnv(({ home }) => {
+    const upstreamDir = path.join(home, ".omniroute");
+    fs.mkdirSync(upstreamDir, { recursive: true });
+    fs.writeFileSync(path.join(upstreamDir, "storage.sqlite"), "upstream-db-bytes");
+    const before = snapshotDir(upstreamDir);
+
+    process.env.DATA_DIR = upstreamDir;
+    const outputLines: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (msg: unknown) => {
+      outputLines.push(String(msg));
+    };
+    try {
+      const resolved = resolveWritableDataDir();
+      // The explicit operator choice wins...
+      assert.equal(resolved, upstreamDir);
+      // ...but it is announced loudly and actionably.
+      assert.ok(
+        outputLines.some(
+          (line) => line.includes("upstream OmniRoute") && line.includes("unset DATA_DIR")
+        ),
+        `expected a loud upstream-sharing warning, got: ${JSON.stringify(outputLines)}`
+      );
+      // ...and no parallel Lite dir is created behind the operator's back.
+      assert.equal(fs.existsSync(path.join(home, ".omniroute-lite")), false);
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    // The upstream fixture itself is untouched (writability probe only).
+    assertSameSnapshot(before, upstreamDir, "upstream fixture");
+  });
+});
+
 test("no source file resolves a default data dir via join(homedir(), '.omniroute')", async () => {
   // Guard against regressions: the upstream name may only survive in the pinned
   // legacy helpers, comments, scan-exclusion lists and upstream-VPS test tooling.
@@ -215,6 +254,7 @@ test("no source file resolves a default data dir via join(homedir(), '.omniroute
   const scannedExts = new Set([".ts", ".tsx", ".mts", ".mjs", ".js", ".cjs", ".sh"]);
   const joinPattern = /(?:os\.)?homedir\(\)\s*,\s*["'`]\.omniroute["'`]/;
   const shellPattern = /\$HOME\/\.omniroute(?!-lite)/;
+  const appDataPattern = /%APPDATA%[\\/]+omniroute(?!-lite)/;
 
   const offenders: string[] = [];
   function walk(dir: string, depth: number) {
@@ -232,7 +272,13 @@ test("no source file resolves a default data dir via join(homedir(), '.omniroute
         walk(full, depth + 1);
       } else if (entry.isFile() && scannedExts.has(path.extname(entry.name))) {
         const content = fs.readFileSync(full, "utf8");
-        if (joinPattern.test(content) || shellPattern.test(content)) offenders.push(full);
+        if (
+          joinPattern.test(content) ||
+          shellPattern.test(content) ||
+          appDataPattern.test(content)
+        ) {
+          offenders.push(full);
+        }
       }
     }
   }

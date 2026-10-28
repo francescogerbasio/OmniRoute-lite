@@ -16,7 +16,7 @@ export default function BootstrapBanner() {
   // Determine default data dir hint based on platform hint from user-agent
   const dataDir =
     typeof navigator !== "undefined" && navigator.platform?.startsWith("Win")
-      ? "%APPDATA%\\omniroute\\server.env"
+      ? "%APPDATA%\\omniroute-lite\\server.env"
       : "~/.omniroute-lite/server.env";
 
   return (
