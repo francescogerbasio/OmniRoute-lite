@@ -8,7 +8,7 @@
  * open-sse/utils/error.ts), so the three leak shapes these routes actually
  * produce all survive it verbatim:
  *
- *   - config/state paths:  `ENOENT ... open '/home/<user>/.omniroute/data/tunnels.json'`
+ *   - config/state paths:  `ENOENT ... open '/home/<user>/.omniroute-lite/data/tunnels.json'`
  *   - binary paths:        `spawn /usr/local/bin/cloudflared ENOENT`
  *   - Tailscale auth keys: `invalid key tskey-auth-kMn3Qz7RtY-9fVbXsPq2LdWc`
  *

@@ -16,7 +16,7 @@ ops_set_data_dir() {
   OMNIROUTE_SQLITE="${OMNIROUTE_DATA_DIR}/storage.sqlite"
   OMNIROUTE_BACKUPS_DIR="${DB_BACKUPS_DIR:-${OMNIROUTE_DATA_DIR}/db_backups}"
 }
-ops_set_data_dir "${DATA_DIR:-$HOME/.omniroute}"
+ops_set_data_dir "${DATA_DIR:-$HOME/.omniroute-lite}"
 
 ops_log() { printf '[%s] %s\n' "${SCRIPT_NAME:-ops}" "$*" >&2; }
 ops_die() {

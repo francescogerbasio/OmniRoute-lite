@@ -42,14 +42,24 @@ async function withTempEnv(
   }
 }
 
-test("CLI data dir preserves existing legacy ~/.omniroute before XDG", async () => {
+test("CLI data dir uses the Lite dir and never adopts an existing upstream ~/.omniroute", async () => {
   await withTempEnv(({ home, root }) => {
-    const legacyDir = path.join(home, ".omniroute");
-    fs.mkdirSync(legacyDir, { recursive: true });
+    // Upstream fixture present — must NOT be adopted by the Lite CLI (issue #11).
+    const upstreamDir = path.join(home, ".omniroute");
+    fs.mkdirSync(upstreamDir, { recursive: true });
     process.env.XDG_CONFIG_HOME = path.join(root, "xdg");
 
-    assert.equal(cliResolveDataDir(), legacyDir);
+    const expected = path.join(root, "xdg", "omniroute-lite");
+    assert.equal(cliResolveDataDir(), expected);
     assert.equal(cliResolveDataDir(), runtimeResolveDataDir());
+    assert.notEqual(cliResolveDataDir(), upstreamDir);
+  });
+});
+
+test("CLI data dir defaults to ~/.omniroute-lite when no XDG config is set", async () => {
+  await withTempEnv(({ home }) => {
+    delete process.env.XDG_CONFIG_HOME;
+    assert.equal(cliResolveDataDir(), path.join(home, ".omniroute-lite"));
   });
 });
 

@@ -804,7 +804,7 @@ From inside the editor: open the **Extensions** view, search **"OmniRoute"**, cl
 
 Built with [Tauri v2](https://v2.tauri.app/) (a Rust core the size of a rounding error), it ships
 its own signed Node 24 runtime and manages an app-owned OmniRoute install, so it never fights your
-global `node`/`bun`. It **shares your existing `~/.omniroute/` config and database** — so it's the
+global `node`/`bun`. It **shares your existing `~/.omniroute-lite/` config and database** — so it's the
 same OmniRoute you already run, just with a hat on. 🎩
 
 <table>

@@ -1340,7 +1340,7 @@
   },
   "src/lib/db/core.ts": {
     "@typescript-eslint/no-unused-vars": {
-      "count": 3
+      "count": 2
     }
   },
   "src/lib/db/databaseSettings.ts": {

@@ -2,7 +2,7 @@
  * Decide whether a CLI invocation should provision (generate + persist) the
  * STORAGE_ENCRYPTION_KEY into DATA_DIR/.env.
  *
- * Purely informational invocations must NOT create `~/.omniroute/.env` or write
+ * Purely informational invocations must NOT create `~/.omniroute-lite/.env` or write
  * a key — they never touch encrypted storage. Generating a 32-byte key and a
  * `.env` file just to print `omniroute --version` (or `--help`) is a surprising
  * side effect: a read-only command should not mutate the data dir.

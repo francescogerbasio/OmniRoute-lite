@@ -310,7 +310,7 @@ async function getDb(): Promise<AuditDatabase | null> {
 
     const dbPath = process.env.DATA_DIR
       ? join(process.env.DATA_DIR, "storage.sqlite")
-      : join(homedir(), ".omniroute", "storage.sqlite");
+      : join(homedir(), ".omniroute-lite", "storage.sqlite");
 
     if (!existsSync(dbPath)) {
       // Do NOT cache this miss: an MCP server can start before the app creates

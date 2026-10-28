@@ -1,7 +1,7 @@
 /**
  * Plugin scanner — discovers plugins from the filesystem.
  *
- * Scans the plugin directory (`OMNIROUTE_PLUGINS_DIR`, else ~/.omniroute/plugins/) for
+ * Scans the plugin directory (`OMNIROUTE_PLUGINS_DIR`, else ~/.omniroute-lite/plugins/) for
  * subdirectories containing plugin.json manifests.
  * Returns validated manifests with directory paths.
  *
@@ -27,8 +27,8 @@ export interface DiscoveredPlugin {
  *
  *  1. `OMNIROUTE_PLUGINS_DIR` — explicit override, used verbatim. Point it at the
  *     bind-mounted directory in Docker/K8s so discovery stops depending on `HOME`.
- *  2. `<HOME|USERPROFILE>/.omniroute/plugins` — the historical default.
- *  3. `/tmp/.omniroute/plugins` — last-resort fallback for a process with no home
+ *  2. `<HOME|USERPROFILE>/.omniroute-lite/plugins` — the default.
+ *  3. `/tmp/.omniroute-lite/plugins` — last-resort fallback for a process with no home
  *     (an image that never exports `HOME`); the silent failure mode of #11827.
  *
  * A blank or whitespace-only override counts as unset, so an empty `- OMNIROUTE_PLUGINS_DIR=`
@@ -51,7 +51,7 @@ export function getDefaultPluginDir(): string {
   }
 
   const home = process.env.HOME || process.env.USERPROFILE;
-  const dir = join(home || "/tmp", ".omniroute", "plugins");
+  const dir = join(home || "/tmp", ".omniroute-lite", "plugins");
   log.info("scanner.dir_resolved", { dir, source: home ? "home" : "no-home-fallback" });
   return dir;
 }

@@ -14,7 +14,7 @@ export interface IssueAgentAuditResult {
 }
 
 function defaultDataDir(): string {
-  return process.env.DATA_DIR || join(homedir(), ".omniroute");
+  return process.env.DATA_DIR || join(homedir(), ".omniroute-lite");
 }
 
 export async function appendIssueAgentAuditRecord(

@@ -2,7 +2,15 @@ import path from "path";
 import os from "os";
 import fs from "fs";
 
-export const APP_NAME = "omniroute";
+export const APP_NAME = "omniroute-lite";
+
+/**
+ * Upstream OmniRoute app name. The Lite fork must never adopt upstream's
+ * `~/.omniroute` as its runtime data dir. This constant exists only so the
+ * one-time migration helpers can locate the upstream directory as a
+ * read-only source (opt-in); it must never be used to resolve a default.
+ */
+export const LEGACY_UPSTREAM_APP_NAME = "omniroute";
 
 function fallbackHomeDir() {
   const envHome = process.env.HOME || process.env.USERPROFILE;
@@ -29,23 +37,13 @@ function normalizeConfiguredPath(dir: unknown): string | null {
 }
 
 export function getLegacyDotDataDir() {
-  return path.join(safeHomeDir(), `.${APP_NAME}`);
+  // Pinned to the upstream app name on purpose: this is the migration *source*
+  // (the old `~/.omniroute`), never the Lite default. See LEGACY_UPSTREAM_APP_NAME.
+  return path.join(safeHomeDir(), `.${LEGACY_UPSTREAM_APP_NAME}`);
 }
 
 export function getDefaultDataDir() {
   const homeDir = safeHomeDir();
-  const legacyDir = getLegacyDotDataDir();
-
-  // Preserve legacy path if it exists to avoid data loss on updates (e.g., Windows migration)
-  if (fs.existsSync(legacyDir)) {
-    try {
-      if (fs.statSync(legacyDir).isDirectory()) {
-        return legacyDir;
-      }
-    } catch {
-      // Ignore stat errors
-    }
-  }
 
   if (process.platform === "win32") {
     const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
@@ -58,7 +56,10 @@ export function getDefaultDataDir() {
     return path.join(xdgConfigHome, APP_NAME);
   }
 
-  return legacyDir;
+  // Lite default. Unlike upstream, an existing legacy directory is NEVER adopted
+  // here — silently reusing `~/.omniroute` would cross-contaminate the operator's
+  // upstream OmniRoute database and credentials with Lite traffic.
+  return path.join(homeDir, `.${APP_NAME}`);
 }
 
 export function resolveDataDir({ isCloud = false }: { isCloud?: boolean } = {}): string {
@@ -75,10 +76,12 @@ export function resolveDataDir({ isCloud = false }: { isCloud?: boolean } = {}):
  *
  * Unlike {@link resolveDataDir} (a pure, side-effect-free path resolver used by
  * many callers), this variant probes the resolved directory by attempting to
- * create it. When a configured `DATA_DIR` is not writable (`EACCES`/`EPERM`),
- * it falls back to the default user directory so the app keeps working instead
- * of crashing on an unwritable, operator-supplied path. Any other error (e.g.
- * `ENOTDIR`, `ENOSPC`) still propagates.
+ * create it and verify write access. When a configured `DATA_DIR` is not
+ * writable (`EACCES`/`EPERM`/`EROFS`), it FAILS CLOSED with an actionable
+ * error instead of silently falling back: diverting the database (and its
+ * encrypted credentials) to a directory the operator did not choose would be
+ * indistinguishable from data loss. Any other error (e.g. `ENOTDIR`,
+ * `ENOSPC`) also propagates.
  *
  * Use this only at the single startup site that owns directory creation
  * (currently `db/core.ts`); everywhere else keep using the pure resolver.
@@ -135,7 +138,7 @@ export function resolveWritableDataDir({ isCloud = false }: { isCloud?: boolean 
   if (isCloud) return resolved;
 
   // #10428: a test/eval-probe run that never chose a DATA_DIR would otherwise open the
-  // OPERATOR'S REAL database (~/.omniroute/storage.sqlite — live provider credentials).
+  // OPERATOR'S REAL database (~/.omniroute-lite/storage.sqlite — live provider credentials).
   // Redirect to a throwaway dir instead of throwing: the documented single-file command
   // (`node --import tsx/esm --test tests/unit/x.test.ts`) does not load the isolation
   // setup, and a hard failure there would only teach people to disable the guard.
@@ -176,15 +179,21 @@ export function resolveWritableDataDir({ isCloud = false }: { isCloud?: boolean 
 
   try {
     fs.mkdirSync(resolved, { recursive: true });
+    // An existing directory makes mkdirSync a no-op even when it is NOT writable
+    // (read-only mount, wrong owner). Prove writability explicitly so a bad
+    // operator-supplied path fails closed here, at the one site that owns
+    // directory creation, instead of failing later mid-DB-write.
+    fs.accessSync(resolved, fs.constants.W_OK);
     return resolved;
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException | null)?.code;
-    if (code === "EACCES" || code === "EPERM") {
-      const fallback = getDefaultDataDir();
-      console.warn(
-        `[DATA_DIR] '${resolved}' is not writable (${code}) → falling back to '${fallback}'`
+    if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+      throw new Error(
+        `[DATA_DIR] Configured DATA_DIR '${resolved}' is not writable (${code}). ` +
+          `Refusing to fall back to a different directory: the database and its encrypted ` +
+          `credentials must live where the operator chose. Fix the permissions on this path, ` +
+          `or set DATA_DIR to a writable location and restart.`
       );
-      return fallback;
     }
     throw err;
   }

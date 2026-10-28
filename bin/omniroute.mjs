@@ -229,13 +229,13 @@ loadEnvFile();
   ensureAndroidCacheDir();
 }
 
-// Generate STORAGE_ENCRYPTION_KEY if not set (persisted to ~/.omniroute/.env)
+// Generate STORAGE_ENCRYPTION_KEY if not set (persisted to ~/.omniroute-lite/.env)
 // This ensures the key survives across upgrades and is not regenerated on each install.
 // See: https://github.com/diegosouzapw/OmniRoute/issues/1622
 //
 // Only provision for commands that actually touch encrypted storage. Purely
 // informational invocations (`--version`, `--help`, `help`) must not create a
-// key or write ~/.omniroute/.env — running a read-only command should never
+// key or write ~/.omniroute-lite/.env — running a read-only command should never
 // mutate the data dir.
 if (shouldProvisionStorageKey(process.argv)) {
   const { randomBytes } = await import("node:crypto");
@@ -246,14 +246,14 @@ if (shouldProvisionStorageKey(process.argv)) {
   // GHSA-2pg2-xm9r-8544: installs created before the fix have a world-readable .env and a
   // world-traversable data dir. Repair them on every run that touches encrypted storage
   // (best-effort; group bits are kept). Informational commands never reach this block.
-  tightenDataDirSecrets(process.env.DATA_DIR || join(homedir(), ".omniroute"));
+  tightenDataDirSecrets(process.env.DATA_DIR || join(homedir(), ".omniroute-lite"));
 
   if (!process.env.STORAGE_ENCRYPTION_KEY) {
     // Persist the key into DATA_DIR when set — that's the directory mounted as a volume in
     // Docker (where storage.sqlite lives), so the key survives `docker down` / `docker pull`.
-    // Writing only to ~/.omniroute (the container home, not a volume) silently lost the key on
+    // Writing only to ~/.omniroute-lite (the container home, not a volume) silently lost the key on
     // container recreation, leaving the persisted encrypted DB undecryptable (regression of #1622).
-    const dataDir = process.env.DATA_DIR || join(homedir(), ".omniroute");
+    const dataDir = process.env.DATA_DIR || join(homedir(), ".omniroute-lite");
     const envPath = join(dataDir, ".env");
     const dbPath = join(dataDir, "storage.sqlite");
 

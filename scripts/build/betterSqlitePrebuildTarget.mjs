@@ -6,7 +6,7 @@
  * Extracted from `postinstall.mjs` into its own module (no top-level side
  * effects) so it can be unit-tested directly — `postinstall.mjs` runs its
  * work via top-level `await`, so importing it executes the real postinstall
- * flow (spawns npm, touches ~/.omniroute) as a side effect of import.
+ * flow (spawns npm, touches ~/.omniroute-lite) as a side effect of import.
  */
 import { isTermux } from "./postinstallSupport.mjs";
 import { detectRuntimeLibc } from "./wreqJsNative.mjs";

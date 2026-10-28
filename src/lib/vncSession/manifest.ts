@@ -29,8 +29,7 @@ export function getVncProvider(id: string | null | undefined): VncProviderEntry 
   if (!id || VNC_UNSUPPORTED_PROVIDER_REASONS[id]) return null;
 
   const catalog = WEB_COOKIE_PROVIDERS[id as keyof typeof WEB_COOKIE_PROVIDERS] as
-    | { id: string; name: string; website?: string }
-    | undefined;
+    { id: string; name: string; website?: string } | undefined;
   const requirement = getWebSessionCredentialRequirement(id);
 
   if (
@@ -69,7 +68,7 @@ function envFlag(name: string, fallback: boolean): boolean {
 
 const profileRoot =
   process.env.OMNIROUTE_VNC_PROFILE_DIR ||
-  `${process.env.HOME || "/tmp"}/.omniroute/browser-login-profiles`;
+  `${process.env.HOME || "/tmp"}/.omniroute-lite/browser-login-profiles`;
 
 export const VNC_CONFIG = {
   /**

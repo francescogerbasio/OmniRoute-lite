@@ -59,7 +59,7 @@ test("resolveWritableDataDir returns the configured DATA_DIR when it is writable
 });
 
 test(
-  "resolveWritableDataDir falls back to the default dir when DATA_DIR is not writable (EACCES/EPERM)",
+  "resolveWritableDataDir FAILS CLOSED when DATA_DIR is not writable (EACCES/EPERM) — no fallback",
   { skip: IS_ROOT || IS_WINDOWS },
   async () => {
     await withTempEnv(({ root, home }) => {
@@ -71,14 +71,41 @@ test(
       const configured = path.join(lockedParent, "data");
       process.env.DATA_DIR = configured;
 
-      const resolved = resolveWritableDataDir();
-      const expectedFallback = getDefaultDataDir();
+      // Issue #11: an unwritable configured DATA_DIR must fail closed. Silently
+      // falling back to the default dir would divert the database (and its
+      // encrypted credentials) to a location the operator did not choose.
+      assert.throws(
+        () => resolveWritableDataDir(),
+        (err: Error) => {
+          return (
+            err.message.includes("not writable") && err.message.includes(path.resolve(configured))
+          );
+        }
+      );
+      // ...and it must not have quietly created either directory.
+      assert.equal(fs.existsSync(configured), false);
+      assert.equal(fs.existsSync(getDefaultDataDir()), false);
+      assert.ok(getDefaultDataDir().startsWith(path.resolve(home)));
+    });
+  }
+);
 
-      // It must NOT return the unwritable configured dir...
-      assert.notEqual(resolved, path.resolve(configured));
-      // ...and instead fall back to the default user dir (~/.omniroute under HOME).
-      assert.equal(resolved, expectedFallback);
-      assert.ok(resolved.startsWith(path.resolve(home)));
+test(
+  "resolveWritableDataDir FAILS CLOSED for an existing but read-only DATA_DIR",
+  { skip: IS_ROOT || IS_WINDOWS },
+  async () => {
+    await withTempEnv(({ root }) => {
+      // mkdirSync is a no-op on an existing directory, so an existing read-only
+      // dir only fails at the explicit writability probe.
+      const readOnly = path.join(root, "read-only-data");
+      fs.mkdirSync(readOnly, { recursive: true });
+      fs.chmodSync(readOnly, 0o555);
+      process.env.DATA_DIR = readOnly;
+
+      assert.throws(
+        () => resolveWritableDataDir(),
+        (err: Error) => err.message.includes("not writable")
+      );
     });
   }
 );

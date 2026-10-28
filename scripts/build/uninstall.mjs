@@ -21,7 +21,7 @@ try {
 }
 
 // 2. Local AppData / Config Folder cleanup (Only on Full Uninstall)
-const dataDir = process.env.DATA_DIR || path.join(os.homedir(), ".omniroute");
+const dataDir = process.env.DATA_DIR || path.join(os.homedir(), ".omniroute-lite");
 
 if (fullUninstall) {
   console.log(`🧹 Full Uninstall selected. Erasing database and files at: ${dataDir}`);

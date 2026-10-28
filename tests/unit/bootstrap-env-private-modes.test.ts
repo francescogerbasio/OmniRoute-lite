@@ -33,7 +33,7 @@ function withIsolatedEnv(fn: (dataDir: string) => void) {
   process.env.HOME = home;
   process.chdir(cwd);
   try {
-    fn(path.join(home, ".omniroute"));
+    fn(path.join(home, ".omniroute-lite"));
   } finally {
     process.chdir(originalCwd);
     process.umask(previousUmask);

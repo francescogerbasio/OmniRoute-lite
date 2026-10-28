@@ -18,7 +18,7 @@ Usage: bin/snapshot-data.sh [--label <name>] [--data-dir <path>] [-h|--help]
 Creates a consistent snapshot of the OmniRoute SQLite data under the backups dir
 and prints the snapshot id (UTC timestamp) on stdout.
 
-Env: DATA_DIR (default ~/.omniroute), DB_BACKUPS_DIR (default $DATA_DIR/db_backups).
+Env: DATA_DIR (default ~/.omniroute-lite), DB_BACKUPS_DIR (default $DATA_DIR/db_backups).
 EOF
 }
 

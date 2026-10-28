@@ -14,7 +14,7 @@
  * Priority (lowest → highest):
  *   1. Auto-generated defaults
  *   2. {DATA_DIR}/server.env  (persisted on first boot)
- *   3. Preferred config .env  (DATA_DIR/.env -> ~/.omniroute/.env -> ./.env)
+ *   3. Preferred config .env  (DATA_DIR/.env -> ~/.omniroute-lite/.env -> ./.env)
  *   4. process.env            (shell / Docker -e flags, highest priority)
  */
 
@@ -32,7 +32,7 @@ const OPTIONAL_OAUTH_SECRETS = [
   { keys: ["QODER_OAUTH_CLIENT_SECRET"], label: "Qoder OAuth" },
 ];
 
-// ── Resolve DATA_DIR (mirrors dataPaths.ts logic) ───────────────────────────
+// ── Resolve DATA_DIR (mirrors dataPaths.ts logic for the Lite fork) ─────────
 function resolveDataDir(overridePath, env = process.env) {
   if (overridePath?.trim()) return resolve(overridePath);
 
@@ -41,13 +41,15 @@ function resolveDataDir(overridePath, env = process.env) {
 
   if (process.platform === "win32") {
     const appData = env.APPDATA || join(homedir(), "AppData", "Roaming");
-    return join(appData, "omniroute");
+    return join(appData, "omniroute-lite");
   }
 
   const xdg = env.XDG_CONFIG_HOME?.trim();
-  if (xdg) return join(resolve(xdg), "omniroute");
+  if (xdg) return join(resolve(xdg), "omniroute-lite");
 
-  return join(homedir(), ".omniroute");
+  // Lite default — deliberately NOT upstream's `~/.omniroute`. An existing
+  // upstream directory is never adopted (data-isolation contract, issue #11).
+  return join(homedir(), ".omniroute-lite");
 }
 
 function getPreferredEnvFilePath(env = process.env) {
@@ -397,7 +399,7 @@ export function bootstrapEnv({ dataDirOverride, quiet = false } = {}) {
                   "⛔ STORAGE_ENCRYPTION_KEY does not match the key used to encrypt your stored credentials."
                 );
                 log(
-                  "   Either restore your previous key via ~/.omniroute/server.env or ~/.omniroute/.env,"
+                  "   Either restore your previous key via ~/.omniroute-lite/server.env or ~/.omniroute-lite/.env,"
                 );
                 log(
                   "   or run: omniroute reset-encrypted-columns --force  (wipes credentials, keeps provider config)"

@@ -60,10 +60,10 @@ export function readPackIndex(indexFile) {
   return raw;
 }
 
-/** @returns {string} `${DATA_DIR||~/.omniroute}/packs` */
+/** @returns {string} `${DATA_DIR||~/.omniroute-lite}/packs` */
 export function packsRoot(dataDir) {
   return path.join(
-    dataDir || process.env.DATA_DIR || path.join(os.homedir(), ".omniroute"),
+    dataDir || process.env.DATA_DIR || path.join(os.homedir(), ".omniroute-lite"),
     "packs"
   );
 }

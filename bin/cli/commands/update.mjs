@@ -58,7 +58,7 @@ function compareVersions(a, b) {
 
 export async function createBackup() {
   const binPath = BIN_DIR;
-  const backupDir = path.join(homedir(), ".omniroute", "backups", `omniroute-${Date.now()}`);
+  const backupDir = path.join(homedir(), ".omniroute-lite", "backups", `omniroute-${Date.now()}`);
 
   try {
     const { mkdirSync, cpSync, existsSync } = await import("node:fs");
@@ -108,9 +108,13 @@ export async function printPostApplyGuidance(latest, deps = { readPidFile, isPid
     printInfo("  Run `omniroute restart` now to apply this update.");
   } else {
     printInfo(`No running OmniRoute server was detected via the CLI's PID file.`);
-    printInfo(`  Start it with \`omniroute serve\` (or restart your existing process) to run ${latest}.`);
+    printInfo(
+      `  Start it with \`omniroute serve\` (or restart your existing process) to run ${latest}.`
+    );
   }
-  printInfo("`omniroute --version` will keep reporting the old version until the process restarts.");
+  printInfo(
+    "`omniroute --version` will keep reporting the old version until the process restarts."
+  );
 }
 
 export function registerUpdate(program) {
@@ -190,7 +194,7 @@ export async function runUpdateCommand(opts = {}) {
     console.log(
       "\n  [DRY RUN] Would run: npm install -g omniroute@latest --include=optional --legacy-peer-deps"
     );
-    if (!skipBackup) console.log("  [DRY RUN] Would create backup in ~/.omniroute/backups/");
+    if (!skipBackup) console.log("  [DRY RUN] Would create backup in ~/.omniroute-lite/backups/");
     return 0;
   }
 
@@ -254,7 +258,7 @@ export async function runUpdateCommand(opts = {}) {
   } catch (err) {
     printError(`Update failed: ${err.message}`);
     printInfo("Restore from backup:");
-    const backupDir = path.join(homedir(), ".omniroute", "backups");
+    const backupDir = path.join(homedir(), ".omniroute-lite", "backups");
     printInfo(`  ls ${backupDir}`);
     return 1;
   }

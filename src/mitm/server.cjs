@@ -10,7 +10,7 @@ const os = require("os");
 // This file runs as a standalone CommonJS process and cannot import the ES module.
 function getDataDir() {
   if (process.env.DATA_DIR) return path.resolve(process.env.DATA_DIR.trim());
-  return path.join(os.homedir(), ".omniroute");
+  return path.join(os.homedir(), ".omniroute-lite");
 }
 
 // Configuration

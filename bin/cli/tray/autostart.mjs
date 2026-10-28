@@ -115,7 +115,7 @@ function tryEnableLinger() {
 function writeLinuxSystemdUnit(cliPath) {
   const unitDir = dirname(linuxSystemdUnitPath());
   mkdirSync(unitDir, { recursive: true });
-  const envFile = join(userHomeDir(), ".omniroute", ".env");
+  const envFile = join(userHomeDir(), ".omniroute-lite", ".env");
   const nodeBinDir = dirname(process.execPath);
   const userLocalBin = join(userHomeDir(), ".local", "bin");
   const pathEnv = `${nodeBinDir}:${userLocalBin}:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin`;

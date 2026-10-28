@@ -70,8 +70,7 @@ describe("MCP audit shutdown", () => {
     expect(mockDb.pragma).toHaveBeenCalledWith("wal_checkpoint(TRUNCATE)");
     expect(mockDb.close).toHaveBeenCalledTimes(1);
     expect(audit.closeAuditDb()).toBe(false);
-  }, // (issue #6803). // calls can exceed the default budget though the behavior is correct // CI-runner load, vi.resetModules() + a fresh dynamic import + mocked DB // Explicit generous timeout (vitest default is 5000ms): under contended
-  30000);
+  }, 30000); // (issue #6803). // calls can exceed the default budget though the behavior is correct // CI-runner load, vi.resetModules() + a fresh dynamic import + mocked DB // Explicit generous timeout (vitest default is 5000ms): under contended
 
   it("still closes the audit database when checkpoint fails", async () => {
     const mockDb: MockAuditDb = {
@@ -208,7 +207,7 @@ describe("MCP audit shutdown", () => {
   });
 
   it("retries once the database file appears instead of caching the miss forever", async () => {
-    // An MCP server started before the app created ~/.omniroute/storage.sqlite must
+    // An MCP server started before the app created ~/.omniroute-lite/storage.sqlite must
     // pick the database up on a later call. Caching the "not found" miss would leave
     // that process without audit logging for its whole lifetime.
     fs.rmSync(dbFile);

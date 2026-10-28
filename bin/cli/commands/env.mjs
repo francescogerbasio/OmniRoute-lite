@@ -19,7 +19,7 @@ const OMNIROUTE_ENV_VARS = [
 const ENV_DEFAULTS = {
   PORT: "20128",
   DASHBOARD_PORT: "20128",
-  DATA_DIR: "~/.omniroute",
+  DATA_DIR: "~/.omniroute-lite",
   NODE_ENV: "production",
 };
 

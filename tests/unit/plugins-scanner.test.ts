@@ -62,19 +62,19 @@ describe("plugin scanner", () => {
 
     it("keeps the home-derived default when the override is unset", () => {
       const dir = withEnv({ HOME: "/home/tester" }, () => mod.getDefaultPluginDir());
-      assert.equal(dir, join("/home/tester", ".omniroute", "plugins"));
+      assert.equal(dir, join("/home/tester", ".omniroute-lite", "plugins"));
     });
 
     it("treats a blank override as unset", () => {
       const dir = withEnv({ OMNIROUTE_PLUGINS_DIR: "   ", HOME: "/home/tester" }, () =>
         mod.getDefaultPluginDir()
       );
-      assert.equal(dir, join("/home/tester", ".omniroute", "plugins"));
+      assert.equal(dir, join("/home/tester", ".omniroute-lite", "plugins"));
     });
 
     it("falls back to /tmp when neither the override nor a home is set", () => {
       const dir = withEnv({}, () => mod.getDefaultPluginDir());
-      assert.equal(dir, join("/tmp", ".omniroute", "plugins"));
+      assert.equal(dir, join("/tmp", ".omniroute-lite", "plugins"));
     });
 
     it("makes the scanner read the overridden directory (Docker bind-mount case)", async () => {

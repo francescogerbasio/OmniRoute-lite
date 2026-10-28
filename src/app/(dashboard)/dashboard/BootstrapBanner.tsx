@@ -17,7 +17,7 @@ export default function BootstrapBanner() {
   const dataDir =
     typeof navigator !== "undefined" && navigator.platform?.startsWith("Win")
       ? "%APPDATA%\\omniroute\\server.env"
-      : "~/.omniroute/server.env";
+      : "~/.omniroute-lite/server.env";
 
   return (
     <div

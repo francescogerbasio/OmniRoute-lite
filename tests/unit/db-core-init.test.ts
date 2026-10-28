@@ -490,8 +490,8 @@ test(
           const core = await importFresh("src/lib/db/core.ts");
           const expectedDir =
             process.platform === "win32"
-              ? path.join(fakeHome, "AppData", "Roaming", "omniroute")
-              : path.join(fakeHome, ".omniroute");
+              ? path.join(fakeHome, "AppData", "Roaming", "omniroute-lite")
+              : path.join(fakeHome, ".omniroute-lite");
 
           assert.equal(core.DATA_DIR, expectedDir);
           assert.equal(core.SQLITE_FILE, path.join(expectedDir, "storage.sqlite"));

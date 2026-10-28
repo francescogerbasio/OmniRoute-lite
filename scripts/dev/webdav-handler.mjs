@@ -347,31 +347,23 @@ export function resolveDataDir() {
 
 function getDefaultDataDir() {
   const homeDir = os.homedir();
-  const legacyDir = path.join(homeDir, ".omniroute"); // getLegacyDotDataDir()
 
-  // 2) Preserve the legacy ~/.omniroute path if it already exists (avoid data loss).
-  try {
-    if (fs.existsSync(legacyDir) && fs.statSync(legacyDir).isDirectory()) {
-      return legacyDir;
-    }
-  } catch {
-    // ignore stat errors
-  }
-
-  // 3) Windows → %APPDATA%/omniroute.
+  // Windows → %APPDATA%/omniroute-lite.
   if (process.platform === "win32") {
     const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
-    return path.join(appData, "omniroute");
+    return path.join(appData, "omniroute-lite");
   }
 
-  // 4) XDG on Linux/macOS only when XDG_CONFIG_HOME is explicitly configured.
+  // XDG on Linux/macOS only when XDG_CONFIG_HOME is explicitly configured.
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   if (typeof xdgConfigHome === "string" && xdgConfigHome.trim().length > 0) {
-    return path.join(path.resolve(xdgConfigHome.trim()), "omniroute");
+    return path.join(path.resolve(xdgConfigHome.trim()), "omniroute-lite");
   }
 
-  // 5) Default → legacy ~/.omniroute (even if it does not exist yet).
-  return legacyDir;
+  // Default → ~/.omniroute-lite. Upstream's `~/.omniroute` is NEVER adopted here
+  // (data-isolation contract, issue #11): a WebDAV server reading upstream's
+  // SQLite file would cross-contaminate the two installations.
+  return path.join(homeDir, ".omniroute-lite");
 }
 
 /**
@@ -494,8 +486,7 @@ function buildEntryHref(baseHref, relativePath, isDir) {
 function handleOptions(req, res) {
   res.writeHead(200, {
     DAV: "1, 2",
-    Allow:
-      "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND, LOCK, UNLOCK",
+    Allow: "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND, LOCK, UNLOCK",
     "MS-Author-Via": "DAV",
     "Content-Length": "0",
   });

@@ -9,7 +9,7 @@
  *
  * Writes:
  *   - config/alibaba-free-tier-allowlist.json (repo baseline)
- *   - ~/.omniroute/alibaba-free-tier-allowlist.json when DATA_DIR unset
+ *   - ~/.omniroute-lite/alibaba-free-tier-allowlist.json when DATA_DIR unset
  */
 
 import fs from "node:fs";
@@ -87,7 +87,7 @@ function main() {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, serialized);
 
-  const dataDir = process.env.DATA_DIR?.trim() || path.join(os.homedir(), ".omniroute");
+  const dataDir = process.env.DATA_DIR?.trim() || path.join(os.homedir(), ".omniroute-lite");
   const runtimePath = path.join(dataDir, "alibaba-free-tier-allowlist.json");
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(runtimePath, serialized);

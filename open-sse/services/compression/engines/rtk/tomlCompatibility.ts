@@ -277,7 +277,7 @@ export function parseRtkTomlV1(content: string): RtkTomlCompatibilityResult {
 }
 
 function getDataDir(): string {
-  return process.env.DATA_DIR || path.join(os.homedir(), ".omniroute");
+  return process.env.DATA_DIR || path.join(os.homedir(), ".omniroute-lite");
 }
 
 export function getGlobalRtkTomlPath(): string {
