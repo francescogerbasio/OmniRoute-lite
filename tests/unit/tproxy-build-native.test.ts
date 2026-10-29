@@ -52,7 +52,7 @@ test("builds via node-gyp rebuild in the native dir and reports success", () => 
     exists: (p) => p === GYP || p === OUT,
   });
   assert.equal(res.built, true);
-  assert.deepEqual(calls, [{ cmd: "npx", args: ["--yes", "node-gyp", "rebuild"], cwd: NATIVE }]);
+  assert.deepEqual(calls, [{ cmd: "pnpm", args: ["dlx", "node-gyp", "rebuild"], cwd: NATIVE }]);
 });
 
 test("a node-gyp / toolchain failure is non-fatal (built:false with a reason)", () => {
