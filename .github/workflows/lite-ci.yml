@@ -100,6 +100,19 @@ jobs:
       - name: Install dependencies (pnpm only)
         run: pnpm install --frozen-lockfile
 
+      # Supply-chain gate: lockfile integrity/host policy plus pnpm's own manifest/lock
+      # consistency check. Runs before typecheck/tests so a bad lockfile fails the job early.
+      # NOTE: this is detective with respect to install scripts (deps are already installed);
+      # the preventive ordering is tracked in #23.
+      - name: Lockfile supply-chain policy (pnpm)
+        run: pnpm run check:lockfile
+
+      - name: Lockfile policy regression tests
+        run: |
+          node --import tsx/esm \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/build/check-lockfile.test.ts
+
       - name: Typecheck (core)
         run: pnpm run typecheck:core
 
