@@ -14,7 +14,7 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const pkg = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
 const scripts: Record<string, string> = pkg.scripts;
 
-const SERIAL_GLOB = 'tests/unit/serial/**/*.test.ts';
+const SERIAL_GLOB = "tests/unit/serial/**/*.test.ts";
 
 test("test:unit:serial existe e roda o diretório de quarentena com concurrency=1", () => {
   const s = scripts["test:unit:serial"];
@@ -24,9 +24,15 @@ test("test:unit:serial existe e roda o diretório de quarentena com concurrency=
 });
 
 test("todos os runners paralelos terminam com o passo serial", () => {
-  for (const key of ["test", "test:unit", "test:unit:ci", "test:unit:fast", "test:coverage:runner"]) {
+  for (const key of [
+    "test",
+    "test:unit",
+    "test:unit:ci",
+    "test:unit:fast",
+    "test:coverage:runner",
+  ]) {
     assert.ok(
-      scripts[key].endsWith("&& npm run test:unit:serial"),
+      scripts[key].endsWith("&& pnpm run test:unit:serial"),
       `${key} deve encadear o passo serial no fim`
     );
   }
@@ -48,7 +54,7 @@ test("todos os runners paralelos terminam com o passo serial", () => {
 });
 
 test("os globs paralelos NÃO capturam tests/unit/serial/ (sem dupla execução)", () => {
-  const parallel = scripts["test:unit"].split("&& npm run test:unit:serial")[0];
+  const parallel = scripts["test:unit"].split("&& pnpm run test:unit:serial")[0];
   assert.ok(!parallel.includes("serial"), "parte paralela não deve referenciar serial/");
   // o glob de subdiretórios é uma brace-list explícita — 'serial' não pode entrar nela
   const braceList = parallel.match(/tests\/unit\/\{([^}]+)\}/)?.[1] ?? "";

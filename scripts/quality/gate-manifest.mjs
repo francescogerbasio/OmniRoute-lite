@@ -72,7 +72,9 @@ export function resolveProfile(manifest, scripts, name) {
   if (!Object.hasOwn(manifest.profiles, name)) throw new Error(`unknown profile: ${name}`);
   return manifest.profiles[name].aliases.map((alias) => ({
     name: alias,
-    cmd: [process.platform === "win32" ? "npm.cmd" : "npm", "run", "--silent", alias],
+    // pnpm is the only supported package manager here (packageManager field); a scan that
+    // shelled out to npm would need npm on PATH for no reason and could resolve a stale tree.
+    cmd: [process.platform === "win32" ? "pnpm.cmd" : "pnpm", "run", "--silent", alias],
   }));
 }
 
