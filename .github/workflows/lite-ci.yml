@@ -133,7 +133,8 @@ jobs:
             tests/unit/tproxy-build-native.test.ts \
             tests/unit/build/tsc-invocation.test.ts \
             tests/unit/build/check-api-typecheck.test.ts \
-            tests/unit/build/check-dashboard-typecheck.test.ts
+            tests/unit/build/check-dashboard-typecheck.test.ts \
+            tests/unit/build/homolog-pnpm-invocations.test.ts
 
       - name: Typecheck (core)
         run: pnpm run typecheck:core
