@@ -31,19 +31,59 @@ const TSCONFIG = path.join(ROOT, "open-sse", "tsconfig.json");
 const BASELINE_PATH = path.join(ROOT, "config/quality/open-sse-typecheck-baseline.json");
 const UPDATE = process.argv.includes("--update");
 
-function runTsc() {
+/**
+ * Execute the locally installed TypeScript CLI directly through Node.
+ *
+ * pnpm owns node_modules; resolving its TypeScript entrypoint explicitly avoids
+ * remote npx downloads and Windows .cmd shim execution (EINVAL on recent Node).
+ * No shell, package-manager subprocess, or PATH-dependent fallback is needed.
+ */
+export function getTscCommand(rootDir = ROOT, nodeExecutable = process.execPath) {
+  return {
+    command: nodeExecutable,
+    args: [
+      path.join(rootDir, "node_modules", "typescript", "bin", "tsc"),
+      "--pretty",
+      "false",
+      "--noEmit",
+      "-p",
+      path.join(rootDir, "open-sse", "tsconfig.json"),
+    ],
+  };
+}
+
+/**
+ * Runs TypeScript with an injectable process boundary for fast regression tests.
+ * A non-zero tsc exit can still contain expected, baselined diagnostics on stdout, so the
+ * exit status is reported to the caller instead of being swallowed.
+ * @returns {{ stdout: string, failed: boolean }}
+ */
+export function runTsc(options = {}) {
+  const { rootDir = ROOT, nodeExecutable = process.execPath, execFile = execFileSync } = options;
+  const { command, args } = getTscCommand(rootDir, nodeExecutable);
   try {
-    const stdout = execFileSync(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["tsc", "--pretty", "false", "--noEmit", "-p", TSCONFIG],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ROOT }
-    );
-    return stdout;
+    const stdout = execFile(command, args, {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      cwd: rootDir,
+    });
+    return { stdout: String(stdout ?? ""), failed: false };
   } catch (err) {
-    // tsc exits non-zero when there are type errors — stdout still has the report.
-    if (err.stdout) return String(err.stdout);
+    // TypeScript exits non-zero when there are type errors; preserve the report.
+    if (err.stdout) return { stdout: String(err.stdout), failed: true };
     throw err;
   }
+}
+
+/**
+ * A non-zero tsc exit with no PARSABLE diagnostics is not a type-error report — it is a
+ * failed compiler invocation (bad tsconfig, missing input, CLI misuse) whose message usually
+ * looks like "error TS5058: …" without the `file(line,col): error TSxxxx:` shape that
+ * parseTscOutput understands. Treating that as "0 errors" would pass the gate (and `--update`
+ * would freeze an empty baseline), so it fails closed.
+ */
+export function isUnparsedTypecheckFailure({ failed, liveErrorCount }) {
+  return failed === true && liveErrorCount === 0;
 }
 
 function loadBaseline() {
@@ -62,7 +102,7 @@ function main() {
   }
 
   console.log("[open-sse-typecheck] Running tsc scoped to open-sse/ workspace…");
-  const stdout = runTsc();
+  const { stdout, failed } = runTsc();
   const live = parseTscOutput(stdout);
   const baseline = loadBaseline();
   const { regressions, improvements } = diffAgainstBaseline(live, baseline);
@@ -71,6 +111,19 @@ function main() {
     (sum, codes) => sum + Object.values(codes).reduce((s, c) => s + c, 0),
     0
   );
+
+  // Fail closed BEFORE the baseline is written or compared: a compiler invocation that failed
+  // without emitting parseable diagnostics is not "zero TypeScript errors".
+  if (isUnparsedTypecheckFailure({ failed, liveErrorCount })) {
+    const detail = stdout.trim().split("\n").slice(0, 10).join("\n");
+    process.stderr.write(
+      "[open-sse-typecheck] FAIL — tsc exited non-zero without parseable diagnostics. " +
+        "This is a failed compiler invocation, not a type-error report:\n" +
+        (detail ? `${detail}\n` : "")
+    );
+    process.exit(2);
+  }
+
   console.log(`openSseTypecheckErrors=${liveErrorCount}`);
 
   if (UPDATE) {

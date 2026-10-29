@@ -38,7 +38,7 @@ export function buildTproxyNative(projectRoot, opts = {}) {
 
   const out = path.join(nativeDir, "build", "Release", "transparent.node");
   try {
-    run("npx", ["--yes", "node-gyp", "rebuild"], nativeDir);
+    run("pnpm", ["dlx", "node-gyp", "rebuild"], nativeDir);
   } catch (err) {
     return { built: false, reason: `toolchain/build failed: ${err?.message ?? String(err)}` };
   }
