@@ -112,6 +112,12 @@ jobs:
       - name: Lockfile supply-chain policy (pnpm)
         run: pnpm run check:lockfile
 
+      # Level A+B packaging preflight: pnpm's own pack computation (dry-run, --ignore-scripts,
+      # --ignore-pnpmfile, --offline) against the repository publish policy. No build, no
+      # installs, no registry access. An unbuilt checkout reports INCOMPLETE, never "valid".
+      - name: Packaging preflight (pnpm)
+        run: pnpm run check:pack-preflight
+
       # Proves the prebuilt modules the suites depend on actually work without their scripts,
       # and that the DB factory selects better-sqlite3 instead of the node:sqlite/sql.js
       # fallback (which would mask a broken prebuild).
@@ -134,7 +140,8 @@ jobs:
             tests/unit/build/tsc-invocation.test.ts \
             tests/unit/build/check-api-typecheck.test.ts \
             tests/unit/build/check-dashboard-typecheck.test.ts \
-            tests/unit/build/homolog-pnpm-invocations.test.ts
+            tests/unit/build/homolog-pnpm-invocations.test.ts \
+            tests/unit/build/pack-preflight.test.ts
 
       - name: Typecheck (core)
         run: pnpm run typecheck:core

@@ -289,6 +289,11 @@
       "disposition": "separately-invoked"
     },
     {
+      "name": "check:pack-preflight",
+      "command": "node --import tsx scripts/build/pack-preflight.ts",
+      "disposition": "separately-invoked"
+    },
+    {
       "name": "check:pr-evidence",
       "command": "node scripts/check/check-pr-evidence.mjs",
       "disposition": "separately-invoked"
