@@ -1,0 +1,80 @@
+name: Lite data isolation
+
+# Lightweight, PR-scoped validation for the OmniRoute Lite fork (issue #11 — data isolation).
+#
+# Deliberately narrow: this runs only the data-isolation + CLI regression tests and the core
+# typecheck. It never runs `build:fast` or a production build — those are resource-intensive
+# and are validated separately on a machine sized for them. No npm/npx anywhere: pnpm only.
+#
+# `pull_request` has no draft filter on purpose: draft PRs must get feedback too.
+#
+# Obsolete inherited workflows are disabled at the repository level (reversible with
+# `gh workflow enable`), not deleted, so upstream syncs stay clean: CI, Quality Gates and
+# API Route Typecheck drive the upstream npm-based admission gate (this fork's baseline is
+# pnpm and has no root package-lock.json), and DAST smoke fails in setup-node for the same
+# reason (`cache: npm`). `main` carries no branch protection or ruleset, so none of their
+# check names are required to merge; this workflow plus semgrep are the signals that matter.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  workflow_dispatch:
+
+concurrency:
+  group: lite-data-isolation-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Same convention as ci.yml: never mutate the runner's OS trust store from a test.
+  OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
+  # Single worker (`--test-concurrency=1`) on a modest runner; keep a bounded heap.
+  NODE_OPTIONS: "--max-old-space-size=4096"
+
+jobs:
+  data-isolation:
+    name: Data isolation + CLI (no build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm (from packageManager)
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.8.2
+          run_install: false
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: pnpm
+
+      - name: Install dependencies (pnpm only)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (core)
+        run: pnpm run typecheck:core
+
+      - name: Data isolation + CLI regression tests
+        env:
+          # Hermetic run: DATA_DIR lives inside the runner temp dir and every test isolates
+          # HOME itself (tests/_setup/isolateDataDir.ts is preloaded below). Nothing may read
+          # or write a real ~/.omniroute (upstream) or ~/.omniroute-lite directory.
+          DATA_DIR: ${{ runner.temp }}/omniroute-lite-ci-data
+        run: |
+          node --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts \
+            --import ./tests/_setup/isolateDataDir.ts \
+            --test --test-concurrency=1 --test-force-exit \
+            tests/unit/data-isolation-lite.test.ts \
+            tests/unit/cli-data-dir-env.test.ts \
+            tests/unit/cli-storage-key-provision.test.ts \
+            tests/unit/cli-storage-key-bootstrap.test.ts

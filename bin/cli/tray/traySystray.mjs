@@ -15,7 +15,7 @@ export function isTraySupported() {
 }
 
 // systray2 is NOT a static dependency — it is lazily installed into
-// ~/.omniroute/runtime by trayRuntime.ts (loadSystray). The previous inline
+// ~/.omniroute-lite/runtime by trayRuntime.ts (loadSystray). The previous inline
 // loader called `require("module")`, which throws `ReferenceError: require is
 // not defined` in this ESM file (package "type":"module"); the throw was
 // silently swallowed, so the tray never appeared on macOS/Linux with no error

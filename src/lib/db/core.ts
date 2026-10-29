@@ -15,7 +15,7 @@ import {
 import path from "path";
 import { retryProbeIfTransient } from "./probeUtils";
 import fs from "fs";
-import { resolveWritableDataDir, getLegacyDotDataDir } from "../dataPaths";
+import { resolveWritableDataDir } from "../dataPaths";
 import { isNextBuildPhase } from "../buildPhase";
 import { runMigrations } from "./migrationRunner";
 import { runDbHealthCheck, getPagerCorruption } from "./healthCheck";
@@ -115,7 +115,6 @@ export const isBuildPhase = isNextBuildPhase();
 // ──────────────── Paths ────────────────
 
 export const DATA_DIR = resolveWritableDataDir({ isCloud });
-const LEGACY_DATA_DIR = isCloud ? null : getLegacyDotDataDir();
 export const SQLITE_FILE = isCloud ? null : path.join(DATA_DIR, "storage.sqlite");
 const JSON_DB_FILE = isCloud ? null : path.join(DATA_DIR, "db.json");
 export const DB_BACKUPS_DIR = isCloud ? null : path.join(DATA_DIR, "db_backups");
@@ -1522,7 +1521,7 @@ export function getDriverInfo(): DbDriverInfo | null {
  *
  * Call this at process startup (before any call to getDbInstance()) so that
  * if the bundled better-sqlite3 binary is unavailable, the runtime installer
- * can place it in ~/.omniroute/runtime/ without blocking a synchronous caller.
+ * can place it in ~/.omniroute-lite/runtime/ without blocking a synchronous caller.
  *
  * Idempotent — safe to call multiple times.
  */
@@ -1609,8 +1608,7 @@ function migrateFromJson(db: SqliteDatabase, jsonPath: string) {
         let rateLimitOverridesJson = serializeJsonField(conn.rateLimitOverrides);
         if (!hasOverrides && typeof conn.id === "string") {
           const existing = selectExistingOverrides.get(conn.id) as
-            | { rate_limit_overrides_json: string | null }
-            | undefined;
+            { rate_limit_overrides_json: string | null } | undefined;
           if (existing) rateLimitOverridesJson = existing.rate_limit_overrides_json;
         }
         insertConn.run({

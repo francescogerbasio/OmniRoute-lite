@@ -101,7 +101,9 @@ export async function runSetupRooCommand(opts = {}) {
   const { baseUrl, apiKey } = resolveRooTarget(opts);
   const dryRun = Boolean(opts.dryRun ?? opts["dry-run"]);
   const importPath =
-    opts.importPath ?? opts["import-path"] ?? join(os.homedir(), ".omniroute", "roo-settings.json");
+    opts.importPath ??
+    opts["import-path"] ??
+    join(os.homedir(), ".omniroute-lite", "roo-settings.json");
 
   const guard = await guardHostConfigTarget(importPath, {
     toolLabel: "Roo Code",
@@ -194,7 +196,7 @@ export function registerSetupRoo(program) {
     .option("--model <id>", "Model id for Roo (required unless picked interactively)")
     .option(
       "--import-path <path>",
-      "Roo import JSON path (default: ~/.omniroute/roo-settings.json)"
+      "Roo import JSON path (default: ~/.omniroute-lite/roo-settings.json)"
     )
     .option(
       "--vscode-settings <path>",

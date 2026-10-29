@@ -78,8 +78,8 @@ function getThreadStorePath(): string | null {
       process.env.DATA_DIR ||
       process.env.OMNIROUTE_DATA_DIR ||
       process.env.VIBEPROXY_DATA_DIR ||
-      (process.env.USERPROFILE ? join(process.env.USERPROFILE, ".omniroute") : "") ||
-      (process.env.HOME ? join(process.env.HOME, ".omniroute") : "") ||
+      (process.env.USERPROFILE ? join(process.env.USERPROFILE, ".omniroute-lite") : "") ||
+      (process.env.HOME ? join(process.env.HOME, ".omniroute-lite") : "") ||
       "";
     if (!dataDir) return null;
     return join(dataDir, "notion-web-thread-sessions.json");
@@ -192,7 +192,9 @@ export function normalizeNotionContentForHash(content: unknown): string {
 export function hashNotionConversation(spaceId: string, msgs: NotionMessage[]): string {
   const parts = [
     `space:${spaceId}`,
-    ...msgs.map((h) => `${(h.role || "").toLowerCase()}:${normalizeNotionContentForHash(h.content)}`),
+    ...msgs.map(
+      (h) => `${(h.role || "").toLowerCase()}:${normalizeNotionContentForHash(h.content)}`
+    ),
   ];
   const raw = parts.join("\n");
   let hash = 0x811c9dc5;
@@ -410,7 +412,10 @@ function conversationHasAssistant(messages: NotionMessage[]): boolean {
 }
 
 /** Lookup-only (does not mint). Used by tests and diagnostics. */
-export function notionThreadSessionLookup(spaceId: string, messages: NotionMessage[]): string | null {
+export function notionThreadSessionLookup(
+  spaceId: string,
+  messages: NotionMessage[]
+): string | null {
   loadThreadStoreFromDisk();
   const rootKey = notionThreadRootKey(spaceId, messages);
   if (rootKey) {

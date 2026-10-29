@@ -63,25 +63,25 @@ const CRYPTO_SECRETS = {
  *
  * Note: STORAGE_ENCRYPTION_KEY is no longer auto-generated in postinstall.
  * It's generated at server startup in bin/omniroute.mjs and persisted to
- * ~/.omniroute/.env to survive across upgrades.
+ * ~/.omniroute-lite/.env to survive across upgrades.
  * @see https://github.com/diegosouzapw/OmniRoute/issues/1622
  */
 const ENCRYPTION_BOUND_KEYS = new Set([]);
 
 // ── Resolve DATA_DIR (mirrors bootstrap-env.mjs / dataPaths.ts) ─────────────
-function resolveDataDir(env = process.env) {
+export function resolveDataDir(env = process.env) {
   const configured = env.DATA_DIR?.trim();
   if (configured) return resolve(configured);
 
   if (process.platform === "win32") {
     const appData = env.APPDATA || join(homedir(), "AppData", "Roaming");
-    return join(appData, "omniroute");
+    return join(appData, "omniroute-lite");
   }
 
   const xdg = env.XDG_CONFIG_HOME?.trim();
-  if (xdg) return join(resolve(xdg), "omniroute");
+  if (xdg) return join(resolve(xdg), "omniroute-lite");
 
-  return join(homedir(), ".omniroute");
+  return join(homedir(), ".omniroute-lite");
 }
 
 /**
@@ -326,7 +326,7 @@ export function syncEnv({ rootDir, quiet = false, scope = "full" } = {}) {
         if (ENCRYPTION_BOUND_KEYS.has(key) && dbHasEncrypted) {
           log(
             `⚠️  ${key} NOT generated — encrypted credentials exist in DB. ` +
-              `Restore your previous key via ~/.omniroute/server.env, ~/.omniroute/.env, ` +
+              `Restore your previous key via ~/.omniroute-lite/server.env, ~/.omniroute-lite/.env, ` +
               `or the STORAGE_ENCRYPTION_KEY environment variable.`
           );
           continue;
@@ -373,7 +373,7 @@ export function syncEnv({ rootDir, quiet = false, scope = "full" } = {}) {
     if (entry.blocked) {
       log(
         `⚠️  ${entry.key} NOT generated — encrypted credentials exist in DB. ` +
-          `Restore your previous key via ~/.omniroute/server.env, ~/.omniroute/.env, ` +
+          `Restore your previous key via ~/.omniroute-lite/server.env, ~/.omniroute-lite/.env, ` +
           `or the STORAGE_ENCRYPTION_KEY environment variable.`
       );
       continue;

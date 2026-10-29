@@ -120,24 +120,46 @@ test("archiveLegacyRequestLogs returns null when there are no targets or the mar
   assert.equal(fs.existsSync(CURRENT_REQUEST_SUMMARY_FILE), true);
 });
 
-test("migrateLegacyUsageFiles copies legacy JSON files once and does not overwrite existing targets", () => {
-  writeJson(LEGACY_USAGE_JSON_FILE, { history: [{ provider: "legacy-openai" }] });
-  writeJson(LEGACY_CALL_LOGS_JSON_FILE, { logs: [{ id: "legacy-call" }] });
+test("migrateLegacyUsageFiles copies legacy JSON files once and does not overwrite existing targets (opt-in)", () => {
+  // Issue #11: reading upstream's ~/.omniroute requires the explicit opt-in.
+  process.env.OMNIROUTE_IMPORT_UPSTREAM_USAGE = "1";
+  try {
+    writeJson(LEGACY_USAGE_JSON_FILE, { history: [{ provider: "legacy-openai" }] });
+    writeJson(LEGACY_CALL_LOGS_JSON_FILE, { logs: [{ id: "legacy-call" }] });
 
+    migrations.migrateLegacyUsageFiles();
+
+    assert.deepEqual(readJson(USAGE_JSON_FILE), { history: [{ provider: "legacy-openai" }] });
+    assert.deepEqual(readJson(CALL_LOGS_JSON_FILE), { logs: [{ id: "legacy-call" }] });
+
+    writeJson(USAGE_JSON_FILE, { history: [{ provider: "current-openai" }] });
+    writeJson(CALL_LOGS_JSON_FILE, { logs: [{ id: "current-call" }] });
+    writeJson(LEGACY_USAGE_JSON_FILE, { history: [{ provider: "legacy-should-not-win" }] });
+    writeJson(LEGACY_CALL_LOGS_JSON_FILE, { logs: [{ id: "legacy-should-not-win" }] });
+
+    migrations.migrateLegacyUsageFiles();
+
+    assert.deepEqual(readJson(USAGE_JSON_FILE), { history: [{ provider: "current-openai" }] });
+    assert.deepEqual(readJson(CALL_LOGS_JSON_FILE), { logs: [{ id: "current-call" }] });
+  } finally {
+    delete process.env.OMNIROUTE_IMPORT_UPSTREAM_USAGE;
+  }
+});
+
+test("migrateLegacyUsageFiles ignores the upstream dir without the opt-in (data isolation)", () => {
+  // Issue #11: default behavior must not read upstream's ~/.omniroute at all.
+  writeJson(LEGACY_USAGE_JSON_FILE, { history: [{ provider: "upstream-must-not-leak" }] });
+  writeJson(LEGACY_CALL_LOGS_JSON_FILE, { logs: [{ id: "upstream-must-not-leak" }] });
+
+  delete process.env.OMNIROUTE_IMPORT_UPSTREAM_USAGE;
   migrations.migrateLegacyUsageFiles();
 
-  assert.deepEqual(readJson(USAGE_JSON_FILE), { history: [{ provider: "legacy-openai" }] });
-  assert.deepEqual(readJson(CALL_LOGS_JSON_FILE), { logs: [{ id: "legacy-call" }] });
-
-  writeJson(USAGE_JSON_FILE, { history: [{ provider: "current-openai" }] });
-  writeJson(CALL_LOGS_JSON_FILE, { logs: [{ id: "current-call" }] });
-  writeJson(LEGACY_USAGE_JSON_FILE, { history: [{ provider: "legacy-should-not-win" }] });
-  writeJson(LEGACY_CALL_LOGS_JSON_FILE, { logs: [{ id: "legacy-should-not-win" }] });
-
-  migrations.migrateLegacyUsageFiles();
-
-  assert.deepEqual(readJson(USAGE_JSON_FILE), { history: [{ provider: "current-openai" }] });
-  assert.deepEqual(readJson(CALL_LOGS_JSON_FILE), { logs: [{ id: "current-call" }] });
+  assert.equal(fs.existsSync(USAGE_JSON_FILE), false, "usage.json must not be imported");
+  assert.equal(fs.existsSync(CALL_LOGS_JSON_FILE), false, "call_logs.json must not be imported");
+  // The upstream fixture must remain untouched (read-only source).
+  assert.deepEqual(readJson(LEGACY_USAGE_JSON_FILE), {
+    history: [{ provider: "upstream-must-not-leak" }],
+  });
 });
 
 test("migrateUsageJsonToSqlite migrates usage history aliases, TTFT, and account snapshots", () => {

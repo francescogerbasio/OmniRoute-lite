@@ -222,13 +222,13 @@ function resolveDataDir(overridePath, env = process.env) {
 
   if (process.platform === "win32") {
     const appData = env.APPDATA || path.join(require("os").homedir(), "AppData", "Roaming");
-    return path.join(appData, "omniroute");
+    return path.join(appData, "omniroute-lite");
   }
 
   const xdg = env.XDG_CONFIG_HOME?.trim();
-  if (xdg) return path.join(path.resolve(xdg), "omniroute");
+  if (xdg) return path.join(path.resolve(xdg), "omniroute-lite");
 
-  return path.join(require("os").homedir(), ".omniroute");
+  return path.join(require("os").homedir(), ".omniroute-lite");
 }
 
 function getPreferredEnvFilePath(env = process.env) {

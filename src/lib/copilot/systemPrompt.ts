@@ -143,7 +143,7 @@ Cache, compression, 1proxy, memory, skills tools
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| DATA_DIR | Data directory | ~/.omniroute/ |
+| DATA_DIR | Data directory | ~/.omniroute-lite/ |
 | PORT | HTTP server port | 20128 |
 | REQUIRE_API_KEY | Force API key auth | false |
 | CREDENTIAL_HEALTH_CHECK_INTERVAL | Health check interval (ms) | 3600000 |

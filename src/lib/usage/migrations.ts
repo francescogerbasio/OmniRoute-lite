@@ -277,6 +277,12 @@ export function migrateLegacyUsageFiles() {
   if (!shouldPersistToDisk || !LEGACY_DATA_DIR) return;
   if (isSamePath(DATA_DIR, LEGACY_DATA_DIR)) return;
 
+  // Lite data isolation (#11): LEGACY_DATA_DIR points at upstream's `~/.omniroute`.
+  // Never read it implicitly — copying upstream usage history requires an explicit
+  // operator opt-in. The copy is read-only on the upstream side (copyIfMissing never
+  // touches the source).
+  if (process.env.OMNIROUTE_IMPORT_UPSTREAM_USAGE !== "1") return;
+
   try {
     copyIfMissing(LEGACY_DB_FILE, USAGE_JSON_FILE, "usage history");
     copyIfMissing(LEGACY_CALL_LOGS_DB_FILE, CALL_LOGS_JSON_FILE, "call log index");

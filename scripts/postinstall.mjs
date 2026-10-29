@@ -3,7 +3,7 @@
  * Post-install warm-up for OmniRoute native runtimes.
  *
  * Runs after the main `scripts/build/postinstall.mjs` binary-copy step.
- * Tries to pre-resolve better-sqlite3 into ~/.omniroute/runtime/ so that
+ * Tries to pre-resolve better-sqlite3 into ~/.omniroute-lite/runtime/ so that
  * the first execution is fast and EBUSY-resilient on Windows.
  *
  * Non-fatal: any error is printed as a warning and install continues.

@@ -39,7 +39,7 @@ function withTempEnv(fn) {
   process.chdir(tempCwd);
 
   try {
-    fn({ tempRoot, tempCwd, tempHome, dataDir: path.join(tempHome, ".omniroute") });
+    fn({ tempRoot, tempCwd, tempHome, dataDir: path.join(tempHome, ".omniroute-lite") });
   } finally {
     process.chdir(originalCwd);
     for (const key of Object.keys(process.env)) {
@@ -52,7 +52,7 @@ function withTempEnv(fn) {
   }
 }
 
-test("bootstrapEnv prefers ~/.omniroute/.env over server.env", () => {
+test("bootstrapEnv prefers ~/.omniroute-lite/.env over server.env", () => {
   withTempEnv(({ dataDir }) => {
     process.env.DATA_DIR = dataDir;
     fs.mkdirSync(dataDir, { recursive: true });

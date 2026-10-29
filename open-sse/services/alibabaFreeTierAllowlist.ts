@@ -118,7 +118,7 @@ function resolveAllowlistPaths(): string[] {
   const envPath = process.env.ALIBABA_FREE_TIER_ALLOWLIST_PATH?.trim();
   if (envPath) paths.push(envPath);
 
-  const dataDir = process.env.DATA_DIR?.trim() || path.join(os.homedir(), ".omniroute");
+  const dataDir = process.env.DATA_DIR?.trim() || path.join(os.homedir(), ".omniroute-lite");
   paths.push(path.join(dataDir, "alibaba-free-tier-allowlist.json"));
   paths.push(path.join(process.cwd(), "config", "alibaba-free-tier-allowlist.json"));
   return paths;

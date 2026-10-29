@@ -14,7 +14,10 @@ const BIN = path.join(
   "omniroute.mjs"
 );
 
-function runCli(dataDir: string): { code: number | null; stderr: string } {
+function runCli(
+  dataDir: string,
+  opts: { cwd?: string; rawDataDir?: string } = {}
+): { code: number | null; stdout: string; stderr: string } {
   const cleanEnv = { ...process.env };
   delete cleanEnv.STORAGE_ENCRYPTION_KEY;
   // Isolate from the development repo's .env so local runs match CI where the
@@ -28,10 +31,10 @@ function runCli(dataDir: string): { code: number | null; stderr: string } {
     // so the #1622 provisioning path must be exercised by an actual command.
     // `config list --json` is fast and offline (no server, no network).
     const res = spawnSync("node", [BIN, "config", "list", "--json"], {
-      cwd: dataDir,
+      cwd: opts.cwd ?? dataDir,
       env: {
         ...cleanEnv,
-        DATA_DIR: dataDir,
+        DATA_DIR: opts.rawDataDir ?? dataDir,
         HOME: isolatedHome,
         NO_UPDATE_NOTIFIER: "1",
         OMNIROUTE_CLI_SKIP_REPO_ENV: "1",
@@ -39,7 +42,7 @@ function runCli(dataDir: string): { code: number | null; stderr: string } {
       timeout: 60_000,
       encoding: "utf-8",
     });
-    return { code: res.status, stderr: res.stderr ?? "" };
+    return { code: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
   } finally {
     fs.rmSync(isolatedHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
@@ -80,5 +83,39 @@ test("CLI refuses to auto-generate a key when a database already exists (#1622)"
     assert.match(stderr, /already exists/i, "must warn that a database already exists");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("padded DATA_DIR still loads a previously persisted key (issue #11 review)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-key-c-"));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-key-cwd-"));
+  try {
+    const key = "a".repeat(64);
+    fs.writeFileSync(path.join(dir, ".env"), `STORAGE_ENCRYPTION_KEY=${key}\n`);
+    // An existing database makes a provisioning attempt observable: without the loaded key
+    // the CLI refuses to generate a new one and warns that a database already exists.
+    fs.writeFileSync(path.join(dir, "storage.sqlite"), "fake-db");
+
+    // Run from an EMPTY cwd on purpose: `<cwd>/.env` is always an env candidate, so reusing
+    // `dir` as the cwd would load the key through that path and hide the DATA_DIR bug.
+    const { stdout, stderr } = runCli(dir, { cwd, rawDataDir: `  ${dir}  ` });
+
+    assert.ok(
+      stdout.includes(`Loaded env from ${path.join(dir, ".env")}`),
+      `DATA_DIR must be normalized before env discovery; stdout: ${stdout}`
+    );
+    assert.doesNotMatch(
+      stderr,
+      /already exists/i,
+      `the persisted key must be loaded, not re-provisioned; stderr: ${stderr}`
+    );
+    assert.equal(
+      fs.readFileSync(path.join(dir, ".env"), "utf-8"),
+      `STORAGE_ENCRYPTION_KEY=${key}\n`,
+      "the persisted key file must be left untouched"
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    fs.rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });

@@ -43,7 +43,7 @@ let cachedSslOptions = null;
 function getSslOptions() {
   if (cachedSslOptions) return cachedSslOptions;
   const certDir =
-    process.env.CERT_DIR || path.join(process.env.HOME || process.cwd(), ".omniroute", "mitm");
+    process.env.CERT_DIR || path.join(process.env.HOME || process.cwd(), ".omniroute-lite", "mitm");
   const serverKey = path.join(certDir, "server.key");
   const serverCrt = path.join(certDir, "server.crt");
 

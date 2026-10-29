@@ -90,7 +90,7 @@ function generateZshScript(modelCommands) {
 # OmniRoute zsh completion (dynamic)
 _omniroute_get_cache() {
   local key="$1"
-  local cache="$HOME/.omniroute/completion-cache.json"
+  local cache="$HOME/.omniroute-lite/completion-cache.json"
   local now=$(date +%s 2>/dev/null || echo 0)
   local mtime=0
   if [[ -f "$cache" ]]; then
@@ -213,7 +213,7 @@ function generateBashScript(modelCommands) {
 
 _omniroute_get_cache() {
   local key="$1"
-  local cache="$HOME/.omniroute/completion-cache.json"
+  local cache="$HOME/.omniroute-lite/completion-cache.json"
   local now
   now=$(date +%s 2>/dev/null || echo 0)
   local mtime=0
@@ -292,7 +292,7 @@ complete -c omniroute -n '__fish_seen_subcommand_from runtime' -a 'check repair 
 # Dynamic completions from cache (requires python3)
 function __omniroute_cache_get
   set -l key $argv[1]
-  set -l cache "$HOME/.omniroute/completion-cache.json"
+  set -l cache "$HOME/.omniroute-lite/completion-cache.json"
   set -l now (date +%s 2>/dev/null; or echo 0)
   set -l mtime 0
   test -f $cache; and set mtime (stat -c %Y $cache 2>/dev/null; or stat -f %m $cache 2>/dev/null; or echo 0)

@@ -403,7 +403,7 @@ await ensureStandaloneRuntimePackages();
 await ensureLlmlinguaOptionals();
 await syncProjectEnv();
 
-// Warm up native runtimes (better-sqlite3 in ~/.omniroute/runtime/).
+// Warm up native runtimes (better-sqlite3 in ~/.omniroute-lite/runtime/).
 // Non-fatal: errors are caught inside postinstall.mjs.
 try {
   await import("../postinstall.mjs");

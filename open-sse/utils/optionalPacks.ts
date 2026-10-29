@@ -32,7 +32,7 @@ export const PACK_INDEX_FILENAME = "optional-packs.index.json";
 
 /** Resolve DATA_DIR exactly like the rest of the runtime (modelStore.ts precedent). */
 function resolveDataDir(override?: string): string {
-  return override || process.env.DATA_DIR || path.join(os.homedir(), ".omniroute");
+  return override || process.env.DATA_DIR || path.join(os.homedir(), ".omniroute-lite");
 }
 
 /** `${DATA_DIR}/packs` — root of installed packs. */

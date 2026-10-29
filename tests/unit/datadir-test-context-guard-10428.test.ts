@@ -7,7 +7,7 @@ import fs from "node:fs";
 
 /**
  * #10428 — a script or test that opens the DB without setting DATA_DIR resolves to the
- * operator's REAL database (`~/.omniroute/storage.sqlite`, credentials included).
+ * operator's REAL database (`~/.omniroute-lite/storage.sqlite`, credentials included).
  * `tests/_setup/isolateDataDir.ts` protects the npm test scripts, but it is opt-in per
  * invocation: the AGENTS.md-documented single-file command
  * (`node --import tsx/esm --test tests/unit/x.test.ts`) does NOT load it, and neither does
@@ -29,7 +29,7 @@ function assertOwnedRedirectDir(candidate: string): string {
   const tempRoot = path.resolve(os.tmpdir());
   assert.ok(
     resolved.startsWith(`${tempRoot}${path.sep}`) &&
-      path.basename(resolved).startsWith("omniroute-testctx-"),
+      path.basename(resolved).startsWith("omniroute-lite-testctx-"),
     `refusing to treat a non-owned path as a test redirect: ${resolved}`
   );
   return resolved;
@@ -93,7 +93,7 @@ function assertEvalProbeIsIsolated(evalArgs: string[], configuredDataDir = "") {
   try {
     assert.notEqual(
       ownedRedirect,
-      path.join(os.homedir(), ".omniroute"),
+      path.join(os.homedir(), ".omniroute-lite"),
       "an eval/import probe must not inherit the normal server's default database"
     );
     assert.equal(
