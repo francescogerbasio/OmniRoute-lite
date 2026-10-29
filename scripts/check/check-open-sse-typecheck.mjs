@@ -31,16 +31,42 @@ const TSCONFIG = path.join(ROOT, "open-sse", "tsconfig.json");
 const BASELINE_PATH = path.join(ROOT, "config/quality/open-sse-typecheck-baseline.json");
 const UPDATE = process.argv.includes("--update");
 
-function runTsc() {
+/**
+ * Execute the locally installed TypeScript CLI directly through Node.
+ *
+ * pnpm owns node_modules; resolving its TypeScript entrypoint explicitly avoids
+ * remote npx downloads and Windows .cmd shim execution (EINVAL on recent Node).
+ * No shell, package-manager subprocess, or PATH-dependent fallback is needed.
+ */
+export function getTscCommand(rootDir = ROOT, nodeExecutable = process.execPath) {
+  return {
+    command: nodeExecutable,
+    args: [
+      path.join(rootDir, "node_modules", "typescript", "bin", "tsc"),
+      "--pretty",
+      "false",
+      "--noEmit",
+      "-p",
+      path.join(rootDir, "open-sse", "tsconfig.json"),
+    ],
+  };
+}
+
+/**
+ * Runs TypeScript with an injectable process boundary for fast regression tests.
+ * A non-zero tsc exit can still contain expected, baselined diagnostics on stdout.
+ */
+export function runTsc(options = {}) {
+  const { rootDir = ROOT, nodeExecutable = process.execPath, execFile = execFileSync } = options;
+  const { command, args } = getTscCommand(rootDir, nodeExecutable);
   try {
-    const stdout = execFileSync(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["tsc", "--pretty", "false", "--noEmit", "-p", TSCONFIG],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ROOT }
-    );
-    return stdout;
+    return execFile(command, args, {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      cwd: rootDir,
+    });
   } catch (err) {
-    // tsc exits non-zero when there are type errors — stdout still has the report.
+    // TypeScript exits non-zero when there are type errors; preserve the report.
     if (err.stdout) return String(err.stdout);
     throw err;
   }
