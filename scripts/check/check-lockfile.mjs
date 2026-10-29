@@ -15,6 +15,9 @@
 //      none of them exist in this lockfile today, and accepting them silently would weaken
 //      the previous "official registry only" posture. Add an explicit, reviewed branch when
 //      one is genuinely needed.
+//      Each type is validated as an EXACT key set — a valid field may not smuggle a second,
+//      unvalidated one (registry+path, git+tarball, tarball+repo, …) — so field-level checks
+//      can never be bypassed by mixing shapes.
 //   3. no unexpected importers, and every workspace importer is present
 //   4. manifest/lock consistency is delegated to pnpm itself
 //      (`pnpm install --frozen-lockfile --lockfile-only --ignore-scripts` in a staged temp
@@ -41,17 +44,6 @@ import { pathToFileURL } from "node:url";
 import * as yaml from "js-yaml";
 
 export const LOCKFILE_NAME = "pnpm-lock.yaml";
-
-/** Resolution keys pnpm v9 may legitimately emit; anything else fails closed. */
-const KNOWN_RESOLUTION_KEYS = new Set([
-  "integrity",
-  "tarball",
-  "registry",
-  "repo",
-  "commit",
-  "type",
-  "path",
-]);
 
 /** Bytes per digest algorithm, used to reject truncated/forged SRI values. */
 const SRI_BYTES = { sha512: 64, sha256: 32, sha1: 20 };
@@ -127,7 +119,9 @@ export function validateRemoteUrl(value, policy) {
     return "invalid-url";
   }
   if (policy.validateHttps && url.protocol !== "https:") return "insecure-transport";
-  if (url.username || url.password || value.includes("@")) return "invalid-url";
+  // Only userinfo is a credential carrier. `@` in the PATH is legitimate (scoped tarballs such
+  // as https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz), so never test the raw string.
+  if (url.username || url.password) return "invalid-url";
   if (url.port && url.port !== "443") return "invalid-url";
   const host = url.hostname.toLowerCase();
   if (!policy.allowedHosts.includes(host)) return "disallowed-host";
@@ -147,22 +141,46 @@ export function inspectResolution(packageKey, resolution, policy) {
     fail("missing-resolution", "package entry has no `resolution` mapping");
     return record("unknown");
   }
-  for (const key of Object.keys(resolution)) {
-    if (!KNOWN_RESOLUTION_KEYS.has(key)) {
-      fail("unsupported-resolution", `unknown resolution key "${key}"`);
-    }
-  }
-  if (errors.length > 0) return record("unknown");
 
   const type = typeof resolution.type === "string" ? resolution.type : null;
 
-  if (type && type !== "git") {
-    // `directory` / `file` / anything else references content outside the verified registry.
+  // Exact permitted key combination per resolution type. A valid field must never smuggle a
+  // second, unvalidated one (e.g. `integrity` + `path`, or a git `repo`/`commit` + `tarball`):
+  // each shape is validated as a whole, not field by field.
+  const SHAPES = {
+    git: { keys: new Set(["type", "repo", "commit", "path"]), statsType: "git" },
+    tarball: { keys: new Set(["tarball", "integrity"]), statsType: "tarball" },
+    "registry-explicit": { keys: new Set(["registry", "integrity"]), statsType: "registry" },
+    registry: { keys: new Set(["integrity"]), statsType: "registry" },
+  };
+
+  let shapeName;
+  if (type !== null) {
+    if (type !== "git") {
+      // `directory` / `file` / anything else references content outside the verified registry.
+      fail(
+        "unsupported-resolution",
+        `resolution type "${type}" is not allowed by policy (registry/tarball/git only)`
+      );
+      return record(type);
+    }
+    shapeName = "git";
+  } else if (typeof resolution.tarball === "string") {
+    shapeName = "tarball";
+  } else if (typeof resolution.registry === "string") {
+    shapeName = "registry-explicit";
+  } else {
+    shapeName = "registry";
+  }
+
+  const shape = SHAPES[shapeName];
+  const unexpectedKeys = Object.keys(resolution).filter((key) => !shape.keys.has(key));
+  if (unexpectedKeys.length > 0) {
     fail(
-      "unsupported-resolution",
-      `resolution type "${type}" is not allowed by policy (registry/tarball/git only)`
+      "invalid-resolution-shape",
+      `key(s) ${unexpectedKeys.map((key) => `"${key}"`).join(", ")} not allowed in a ${shapeName} resolution`
     );
-    return record(type);
+    return record(shape.statsType);
   }
 
   if (type === "git") {

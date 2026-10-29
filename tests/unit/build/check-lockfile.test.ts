@@ -93,6 +93,24 @@ test("validateSri rejects missing, malformed, truncated and weak digests", () =>
 // remote URL policy
 // ---------------------------------------------------------------------------
 
+test("validateRemoteUrl allows scoped package paths (only userinfo is rejected)", () => {
+  const policy = getLockfilePolicy("/repo");
+  assert.equal(
+    validateRemoteUrl("https://registry.npmjs.org/@scope/package/-/package-1.0.0.tgz", policy),
+    null
+  );
+  assert.equal(validateRemoteUrl("https://registry.npmjs.org/@scope/package", policy), null);
+  // Credentials are still rejected — including the host-confusion form.
+  assert.equal(
+    validateRemoteUrl("https://user:pass@registry.npmjs.org/a.tgz", policy),
+    "invalid-url"
+  );
+  assert.equal(
+    validateRemoteUrl("https://registry.npmjs.org@evil.example/a.tgz", policy),
+    "invalid-url"
+  );
+});
+
 test("validateRemoteUrl allows only https on the exact registry host", () => {
   const policy = getLockfilePolicy("/repo");
   assert.equal(validateRemoteUrl("https://registry.npmjs.org/a/-/a-1.0.0.tgz", policy), null);
@@ -126,9 +144,79 @@ test("a package without a resolution fails closed", () => {
   assert.equal(errors[0].code, "missing-resolution");
 });
 
+test("resolution shapes are exact: a valid field cannot smuggle a second one", () => {
+  // registry + local path
+  const registryWithPath = inspect({
+    "pkg@1.0.0": { resolution: { integrity: SHA512, path: "../pkg" } },
+  });
+  assert.ok(
+    registryWithPath.errors.some((e: { code: string }) => e.code === "invalid-resolution-shape"),
+    "registry+path must fail"
+  );
+
+  // git + tarball
+  const gitWithTarball = inspect({
+    "pkg@1.0.0": {
+      resolution: {
+        type: "git",
+        repo: "https://github.com/o/r.git",
+        commit: "a".repeat(40),
+        tarball: "https://registry.npmjs.org/a.tgz",
+      },
+    },
+  });
+  assert.ok(
+    gitWithTarball.errors.some((e: { code: string }) => e.code === "invalid-resolution-shape"),
+    "git+tarball must fail"
+  );
+
+  // tarball + repo
+  const tarballWithRepo = inspect({
+    "pkg@1.0.0": {
+      resolution: {
+        tarball: "https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz",
+        integrity: SHA512,
+        repo: "https://github.com/o/r.git",
+      },
+    },
+  });
+  assert.ok(
+    tarballWithRepo.errors.some((e: { code: string }) => e.code === "invalid-resolution-shape"),
+    "tarball+repo must fail"
+  );
+
+  // explicit registry + tarball
+  const registryPlusTarball = inspect({
+    "pkg@1.0.0": {
+      resolution: {
+        registry: "https://registry.npmjs.org",
+        tarball: "https://registry.npmjs.org/a.tgz",
+        integrity: SHA512,
+      },
+    },
+  });
+  assert.ok(
+    registryPlusTarball.errors.some((e: { code: string }) => e.code === "invalid-resolution-shape"),
+    "registry+tarball must fail"
+  );
+
+  // a git monorepo subdirectory (`path` alongside type/repo/commit) stays legitimate
+  const gitWithPath = inspect({
+    "pkg@1.0.0": {
+      resolution: {
+        type: "git",
+        repo: "https://github.com/o/r.git",
+        commit: "a".repeat(40),
+        path: "packages/pkg",
+      },
+    },
+  });
+  assert.deepEqual(gitWithPath.errors, []);
+});
+
 test("unknown resolution keys fail closed instead of being ignored", () => {
   const { errors } = inspect({ "pkg@1.0.0": { resolution: { integrity: SHA512, weird: 1 } } });
-  assert.ok(errors.some((e: { code: string }) => e.code === "unsupported-resolution"));
+  assert.ok(errors.some((e: { code: string }) => e.code === "invalid-resolution-shape"));
 });
 
 test("directory and local tarball resolutions are rejected by policy", () => {
