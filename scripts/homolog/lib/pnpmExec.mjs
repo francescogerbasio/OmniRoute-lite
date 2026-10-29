@@ -48,5 +48,16 @@ export function runPnpmExec(
   { platform = process.platform, spawn = spawnSync } = {}
 ) {
   assertSupportedPlatform(platform);
+  // The no-shell guarantee is enforced here, not just documented: a caller-supplied shell
+  // would hand the suite's dynamic arguments to a command interpreter.
+  if (options?.shell) {
+    const error = new Error(
+      `[homolog] refusing to spawn "${tool}" with a command interpreter enabled. The ` +
+        `homologation suite requires separate argv and no shell so dynamic values are never ` +
+        `interpreted; remove the shell option from the spawn options.`
+    );
+    error.code = "ERR_HOMOLOG_SHELL_FORBIDDEN";
+    throw error;
+  }
   return spawn("pnpm", ["exec", tool, ...args], options);
 }

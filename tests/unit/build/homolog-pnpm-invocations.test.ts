@@ -161,6 +161,57 @@ test("supported platforms spawn pnpm exec with separate argv and no shell", () =
   assert.deepEqual(result, { status: 0, marker: "ok" });
 });
 
+test("a shell-enabled option is rejected before spawning", () => {
+  for (const shell of [true, "/bin/sh", "cmd.exe"]) {
+    const calls: unknown[] = [];
+    assert.throws(
+      () =>
+        runPnpmExec(
+          "httpyac",
+          ["send", "tests/homolog/api/core.http"],
+          { shell },
+          {
+            platform: "linux",
+            spawn: (...args: unknown[]) => {
+              calls.push(args);
+              return { status: 0 };
+            },
+          }
+        ),
+      (error: { code?: string; message?: string }) =>
+        error?.code === "ERR_HOMOLOG_SHELL_FORBIDDEN" &&
+        /refusing to spawn "httpyac"/.test(error.message ?? "") &&
+        /no shell/.test(error.message ?? ""),
+      `shell=${String(shell)} must be rejected`
+    );
+    assert.equal(calls.length, 0, "spawn must not be called when a shell is requested");
+  }
+});
+
+test("an explicit shell:false and the other spawn options pass through unchanged", () => {
+  const calls: { args: unknown; options: Record<string, unknown> }[] = [];
+  const env = { HOMOLOG_BASE_URL: "http://example.test" };
+  runPnpmExec(
+    "playwright",
+    ["test"],
+    { shell: false, env, stdio: "inherit", encoding: "utf8" },
+    {
+      platform: "darwin",
+      spawn: (_command: unknown, args: unknown, options: Record<string, unknown>) => {
+        calls.push({ args, options });
+        return { status: 0 };
+      },
+    }
+  );
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].args, ["exec", "playwright", "test"]);
+  assert.equal(calls[0].options.shell, false);
+  assert.deepEqual(calls[0].options.env, env);
+  assert.equal(calls[0].options.stdio, "inherit");
+  assert.equal(calls[0].options.encoding, "utf8");
+});
+
 test("exit status is preserved from the tool process", () => {
   const result = runPnpmExec(
     "promptfoo",

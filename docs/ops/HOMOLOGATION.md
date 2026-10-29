@@ -1,10 +1,10 @@
 ---
-title: "Homologation Suite (npm run homolog)"
+title: "Homologation Suite (pnpm run homolog)"
 version: 3.8.49
 lastUpdated: 2026-07-14
 ---
 
-# Homologation Suite (`npm run homolog`)
+# Homologation Suite (`pnpm run homolog`)
 
 Real-environment E2E validation of the OmniRoute deploy running on the homologation VPS
 (`HOMOLOG_BASE_URL`, e.g. `http://192.168.0.15:20128`). One command replaces the manual
@@ -36,9 +36,9 @@ not an eval. AI only enters in future maintenance work (see Roadmap below).
      smoke chat request (e.g. `openai,anthropic,gemini,codex,grok,glm,deepseek,openrouter`).
    - `HOMOLOG_API_KEY` — leave empty in normal runs; the suite creates and revokes its
      own ephemeral key. Only set this to debug a single layer in isolation.
-2. `npm install` in the repo (the suite's dependencies — `httpyac`, `promptfoo`,
+2. `pnpm install --frozen-lockfile` in the repo (the suite's dependencies — `httpyac`, `promptfoo`,
    `playwright-ctrf-json-reporter`, `junit-to-ctrf`, `ctrf` — are regular devDependencies).
-3. `npx playwright install` if the browser binaries are not already present.
+3. `pnpm exec playwright install` if the browser binaries are not already present.
 
 ## Platform support
 
@@ -52,7 +52,7 @@ credential is created. Run it from Linux/macOS or a container.
 ## How to run
 
 ```bash
-npm run homolog
+pnpm run homolog
 ```
 
 To validate against a deploy whose version does not match the local `package.json`
@@ -60,7 +60,7 @@ To validate against a deploy whose version does not match the local `package.jso
 version explicitly:
 
 ```bash
-HOMOLOG_EXPECT_VERSION=3.8.47 npm run homolog
+HOMOLOG_EXPECT_VERSION=3.8.47 pnpm run homolog
 ```
 
 The run exits non-zero if any layer fails, and always attempts to revoke the ephemeral
@@ -90,7 +90,7 @@ does break a locator (e.g. a renamed button label or a moved settings page):
 1. Re-confirm the locator against the current source (the specs already document which
    file/line each locator was confirmed against — follow the same pattern, don't guess).
 2. Update the spec in `tests/homolog/ui/`.
-3. Re-run `npm run homolog` (or just the affected Playwright spec) against the VPS to
+3. Re-run `pnpm run homolog` (or just the affected Playwright spec) against the VPS to
    confirm the fix, then commit.
 
 There is no visual/pixel baseline in this suite (F1) — see Roadmap for that.
@@ -110,4 +110,4 @@ Design and phased rollout live in the internal planning spec
   (injected timeout → assert fallback + circuit breaker open/close via
   `/api/monitoring/health`); gated Schemathesis contract testing against
   `docs/openapi.yaml` (low `--max-examples`, fixed seeds, non-LLM endpoints only); and
-  wiring `npm run homolog` + its `summary.md` into the `/generate-release` STOP #2 phase.
+  wiring `pnpm run homolog` + its `summary.md` into the `/generate-release` STOP #2 phase.
