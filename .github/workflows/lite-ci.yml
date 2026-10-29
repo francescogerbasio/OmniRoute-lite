@@ -153,3 +153,84 @@ jobs:
             tests/unit/translator-stream-transform.test.ts \
             tests/unit/tool-use-id-sanitization.test.ts \
             tests/unit/stream-utilities.test.ts
+
+  # TEMPORARY probe (issue #13/#23): validates the pre-script install sequence on a
+  # workflow_dispatch run BEFORE it replaces the `core` install step. Removed in the commit
+  # that switches `core`, so it never becomes a permanent check.
+  install-sequence-probe:
+    name: Install sequence probe
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm (from packageManager)
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.8.2
+          run_install: false
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: pnpm
+
+      - name: Install dependencies (no lifecycle scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Lockfile supply-chain policy (pnpm)
+        run: pnpm run check:lockfile
+
+      - name: Native module smoke (prebuilt artifacts only)
+        env:
+          OMNIROUTE_LITE_CI_NATIVE_SMOKE: "1"
+        run: |
+          node --import tsx/esm \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/build/lite-ci-native-smoke.test.ts
+
+      - name: Lockfile policy regression tests
+        run: |
+          node --import tsx/esm \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/build/check-lockfile.test.ts
+
+      - name: Typecheck (core)
+        run: pnpm run typecheck:core
+
+      - name: Data isolation + CLI regression tests
+        env:
+          DATA_DIR: ${{ runner.temp }}/omniroute-lite-ci-data
+          DISABLE_SQLITE_AUTO_BACKUP: "true"
+        run: |
+          node --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts \
+            --import ./tests/_setup/isolateDataDir.ts \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/data-isolation-lite.test.ts \
+            tests/unit/cli-data-dir-env.test.ts \
+            tests/unit/cli-storage-key-provision.test.ts \
+            tests/unit/cli-storage-key-bootstrap.test.ts
+
+      - name: API, auth, streaming and translation contracts
+        env:
+          DISABLE_SQLITE_AUTO_BACKUP: "true"
+        run: |
+          node --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts \
+            --import ./tests/_setup/isolateDataDir.ts \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/chat-route-coverage.test.ts \
+            tests/unit/api/v1-catchall-json-404.test.ts \
+            tests/unit/authz/client-api-policy.test.ts \
+            tests/unit/10017-sse-control-lines-leak-openai-clients.test.ts \
+            tests/unit/translator-stream-transform.test.ts \
+            tests/unit/tool-use-id-sanitization.test.ts \
+            tests/unit/stream-utilities.test.ts
