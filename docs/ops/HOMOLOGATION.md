@@ -40,6 +40,15 @@ not an eval. AI only enters in future maintenance work (see Roadmap below).
    `playwright-ctrf-json-reporter`, `junit-to-ctrf`, `ctrf` — are regular devDependencies).
 3. `npx playwright install` if the browser binaries are not already present.
 
+## Platform support
+
+Linux and macOS only. The suite spawns its tools through `pnpm exec` with separate argv and
+**no shell**, so dynamic values (`HOMOLOG_BASE_URL`, the ephemeral API key, model IDs from the
+live catalog) are never interpreted by a command interpreter. Windows would require spawning
+`pnpm.cmd` through a shell, which reintroduces a command-injection risk (Node DEP0190), so the
+runner fails closed with `ERR_HOMOLOG_UNSUPPORTED_PLATFORM` before any network call or ephemeral
+credential is created. Run it from Linux/macOS or a container.
+
 ## How to run
 
 ```bash

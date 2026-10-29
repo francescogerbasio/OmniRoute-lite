@@ -1,24 +1,16 @@
 #!/usr/bin/env node
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
+import { assertSupportedPlatform, runPnpmExec } from "./lib/pnpmExec.mjs";
 import { evaluateParity } from "./lib/parity.mjs";
 import { createEphemeralKey } from "./lib/adminClient.mjs";
 import { checkSse } from "./lib/sseCheck.mjs";
 import { promptfooToCtrf } from "./lib/promptfooToCtrf.mjs";
 
-// Homologation is a maintainer-only, live-environment suite. Every external tool it drives is a
-// declared dependency (httpyac, promptfoo, playwright, junit-to-ctrf, ctrf), so `pnpm exec`
-// resolves it locally and never downloads an undeclared package the way `npx` could.
-const PNPM_COMMAND = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-
-function runPnpmExec(tool, args, options = {}) {
-  return spawnSync(PNPM_COMMAND, ["exec", tool, ...args], {
-    // Node >= 20 refuses to spawn a `.cmd` without a shell; mirrors the rest of the repo and
-    // only applies to Windows (the supported homologation runtime is Linux/macOS).
-    shell: process.platform === "win32",
-    ...options,
-  });
-}
+// Fail closed BEFORE any network call or ephemeral credential: the suite spawns pnpm without a
+// shell, and Windows would need shell:true (command-injection risk for dynamic arguments).
+// See scripts/homolog/lib/pnpmExec.mjs.
+assertSupportedPlatform();
 
 // ── env ──────────────────────────────────────────────────────────────────
 if (fs.existsSync(".env.homolog")) {
