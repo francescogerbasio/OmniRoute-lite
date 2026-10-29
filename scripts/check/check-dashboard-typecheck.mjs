@@ -23,91 +23,20 @@
 //   node scripts/check/check-dashboard-typecheck.mjs
 //   node scripts/check/check-dashboard-typecheck.mjs --update   # re-freeze baseline
 
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { classifyTscOutcome, runTsc } from "./lib/tscInvocation.mjs";
+import { diffAgainstBaseline, parseTscOutput } from "./typecheckBaseline.mjs";
+
+// Parsing/comparison live in typecheckBaseline.mjs (shared with the API and Open SSE gates).
+// Re-exported here so this module's existing public API and tests keep working.
+export { diffAgainstBaseline, parseTscOutput };
 
 const ROOT = process.cwd();
 const TSCONFIG = path.join(ROOT, "tsconfig.typecheck-dashboard.json");
 const BASELINE_PATH = path.join(ROOT, "config/quality/dashboard-typecheck-baseline.json");
 const UPDATE = process.argv.includes("--update");
-
-// Matches tsc --pretty false output lines, e.g.:
-//   src/app/(dashboard)/dashboard/foo.tsx(12,7): error TS2304: Cannot find name 'bar'.
-const TSC_ERROR_LINE = /^(.+?)\((\d+),(\d+)\): error (TS\d+):/;
-
-/**
- * Parses raw `tsc --pretty false` stdout into a nested count map:
- *   { "<relative file path>": { "<TS code>": <count> } }
- *
- * Pure/exported for unit testing against synthetic tsc output — no child
- * process involved here.
- */
-export function parseTscOutput(raw) {
-  const counts = {};
-  const lines = String(raw).split("\n");
-  for (const line of lines) {
-    const match = TSC_ERROR_LINE.exec(line);
-    if (!match) continue;
-    const [, file, , , code] = match;
-    if (!counts[file]) counts[file] = {};
-    counts[file][code] = (counts[file][code] || 0) + 1;
-  }
-  return counts;
-}
-
-/**
- * Compares live (file, TS code) error counts against a frozen baseline.
- * Returns `{ regressions, improvements }`:
- *   - regressions: entries where live count > baselined count (or the pair is
- *     entirely new/unbaselined) — these fail the gate.
- *   - improvements: entries where live count < baselined count — informational,
- *     do not fail (use --update to ratchet the baseline down).
- *
- * Exported for unit testing.
- */
-export function diffAgainstBaseline(live, baseline) {
-  const regressions = [];
-  const improvements = [];
-
-  for (const [file, codes] of Object.entries(live)) {
-    for (const [code, liveCount] of Object.entries(codes)) {
-      const baselineCount = (baseline[file] && baseline[file][code]) || 0;
-      if (liveCount > baselineCount) {
-        regressions.push({ file, code, liveCount, baselineCount });
-      } else if (liveCount < baselineCount) {
-        improvements.push({ file, code, liveCount, baselineCount });
-      }
-    }
-  }
-
-  for (const [file, codes] of Object.entries(baseline)) {
-    for (const [code, baselineCount] of Object.entries(codes)) {
-      const liveCount = (live[file] && live[file][code]) || 0;
-      if (liveCount === 0 && baselineCount > 0) {
-        improvements.push({ file, code, liveCount: 0, baselineCount });
-      }
-    }
-  }
-
-  return { regressions, improvements };
-}
-
-function runTsc() {
-  try {
-    const stdout = execFileSync(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["tsc", "--pretty", "false", "--noEmit", "-p", TSCONFIG],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ROOT }
-    );
-    return stdout;
-  } catch (err) {
-    // tsc exits non-zero when there are type errors — stdout still has the report.
-    if (err.stdout) return String(err.stdout);
-    throw err;
-  }
-}
 
 function loadBaseline() {
   if (!fs.existsSync(BASELINE_PATH)) return {};
@@ -118,6 +47,31 @@ function writeBaseline(counts) {
   fs.writeFileSync(BASELINE_PATH, JSON.stringify(counts, null, 2) + "\n");
 }
 
+/**
+ * Runs the local compiler and classifies the result. Exported so the fail-closed decision can be
+ * unit-tested with an injected process boundary.
+ */
+export function evaluateTsc(options = {}) {
+  return classifyTscOutcome(
+    runTsc({
+      rootDir: ROOT,
+      tsconfigPath: TSCONFIG,
+      nodeExecutable: options.nodeExecutable,
+      execFile: options.execFile,
+    })
+  );
+}
+
+/** Reports a fatal compiler outcome (never baselinable, never written by --update). */
+function reportFatal(outcome) {
+  process.stderr.write(
+    `[dashboard-typecheck] FAIL — ${outcome.reason}. The compiler result cannot be compared ` +
+      `with the frozen baseline:\n` +
+      outcome.detail.map((line) => `  ✗ ${line}\n`).join("") +
+      `\nIf the compiler could not run, fix the local install (pnpm install --frozen-lockfile).\n`
+  );
+}
+
 function main() {
   if (!fs.existsSync(TSCONFIG)) {
     process.stderr.write(`[dashboard-typecheck] FAIL — tsconfig not found at ${TSCONFIG}\n`);
@@ -125,15 +79,26 @@ function main() {
   }
 
   console.log("[dashboard-typecheck] Running tsc scoped to src/app/(dashboard)/**…");
-  const stdout = runTsc();
-  const live = parseTscOutput(stdout);
+  let outcome;
+  try {
+    outcome = evaluateTsc();
+  } catch (err) {
+    process.stderr.write(
+      `[dashboard-typecheck] FAIL — could not run the local TypeScript compiler: ${err?.message ?? String(err)}\n` +
+        `  → expected ${path.join(ROOT, "node_modules", "typescript", "bin", "tsc")}\n` +
+        `  → fix the local install with 'pnpm install --frozen-lockfile'\n`
+    );
+    process.exit(2);
+  }
+  if (outcome.kind === "fatal") {
+    reportFatal(outcome);
+    process.exit(2);
+  }
+
+  const live = outcome.live;
+  const liveErrorCount = outcome.liveErrorCount;
   const baseline = loadBaseline();
   const { regressions, improvements } = diffAgainstBaseline(live, baseline);
-
-  const liveErrorCount = Object.values(live).reduce(
-    (sum, codes) => sum + Object.values(codes).reduce((s, c) => s + c, 0),
-    0
-  );
   console.log(`dashboardTypecheckErrors=${liveErrorCount}`);
 
   if (UPDATE) {
@@ -147,7 +112,9 @@ function main() {
       `[dashboard-typecheck] ${improvements.length} baselined error(s) no longer present ` +
         `— run 'node scripts/check/check-dashboard-typecheck.mjs --update' to ratchet the baseline down:\n` +
         improvements
-          .map((i) => `  - ${i.file} ${i.code} (baseline ${i.baselineCount} -> live ${i.liveCount})`)
+          .map(
+            (i) => `  - ${i.file} ${i.code} (baseline ${i.baselineCount} -> live ${i.liveCount})`
+          )
           .join("\n")
     );
   }
