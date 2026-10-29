@@ -1,10 +1,16 @@
 #!/usr/bin/env node
-import { execSync, spawnSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
+import { assertSupportedPlatform, runPnpmExec } from "./lib/pnpmExec.mjs";
 import { evaluateParity } from "./lib/parity.mjs";
 import { createEphemeralKey } from "./lib/adminClient.mjs";
 import { checkSse } from "./lib/sseCheck.mjs";
 import { promptfooToCtrf } from "./lib/promptfooToCtrf.mjs";
+
+// Fail closed BEFORE any network call or ephemeral credential: the suite spawns pnpm without a
+// shell, and Windows would need shell:true (command-injection risk for dynamic arguments).
+// See scripts/homolog/lib/pnpmExec.mjs.
+assertSupportedPlatform();
 
 // ── env ──────────────────────────────────────────────────────────────────
 if (fs.existsSync(".env.homolog")) {
@@ -56,10 +62,9 @@ try {
     models.find((m) => critical.some((p) => m.id.startsWith(`${p}/`)))?.id || models[0].id;
 
   // ── L1 httpYac + SSE ───────────────────────────────────────────────────
-  const hy = spawnSync(
-    "npx",
+  const hy = runPnpmExec(
+    "httpyac",
     [
-      "httpyac",
       "send",
       "tests/homolog/api/core.http",
       "--all",
@@ -83,10 +88,9 @@ try {
   // ── L2 providers reais ─────────────────────────────────────────────────
   try {
     execSync("node scripts/homolog/gen-promptfoo.mjs", { stdio: "inherit", env: process.env });
-    spawnSync(
-      "npx",
+    runPnpmExec(
+      "promptfoo",
       [
-        "promptfoo",
         "eval",
         "-c",
         "homolog-report/promptfooconfig.yaml",
@@ -110,14 +114,10 @@ try {
   }
 
   // ── L4 UI ──────────────────────────────────────────────────────────────
-  const pw = spawnSync(
-    "npx",
-    ["playwright", "test", "-c", "tests/homolog/ui/playwright.config.ts"],
-    {
-      stdio: "inherit",
-      env: process.env,
-    }
-  );
+  const pw = runPnpmExec("playwright", ["test", "-c", "tests/homolog/ui/playwright.config.ts"], {
+    stdio: "inherit",
+    env: process.env,
+  });
   record("L4 UI (Playwright)", pw.status === 0);
 } finally {
   await eph
@@ -127,24 +127,16 @@ try {
 }
 
 // ── L5 relatório unificado ───────────────────────────────────────────────
-spawnSync(
-  "npx",
-  ["junit-to-ctrf", "homolog-report/httpyac-junit.xml", "-o", "homolog-report/api-ctrf.json"],
+runPnpmExec(
+  "junit-to-ctrf",
+  ["homolog-report/httpyac-junit.xml", "-o", "homolog-report/api-ctrf.json"],
   {
     stdio: "inherit",
   }
 );
-spawnSync(
-  "npx",
-  [
-    "ctrf",
-    "merge",
-    "homolog-report",
-    "--output",
-    "homolog-ctrf.json",
-    "--output-dir",
-    "homolog-report",
-  ],
+runPnpmExec(
+  "ctrf",
+  ["merge", "homolog-report", "--output", "homolog-ctrf.json", "--output-dir", "homolog-report"],
   {
     stdio: "inherit",
   }
