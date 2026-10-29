@@ -140,10 +140,18 @@ function loadEnvFile() {
     envPaths.push(envPath);
   };
 
-  migrateElectronServerEnv(process.env.DATA_DIR || getDefaultDataDir());
+  // DATA_DIR may arrive padded or relative ("  /var/lib/x  "). resolveDataDir() trims +
+  // absolutizes it exactly like the database and STORAGE_ENCRYPTION_KEY provisioning paths
+  // do; a raw join here pointed env loading at a path that does not exist, so a previously
+  // persisted key was never loaded on restart (issue #11 review). The `?.trim()` guard keeps
+  // an unset/blank DATA_DIR from adding the default dir when
+  // OMNIROUTE_CLI_SKIP_DEFAULT_DATA_ENV=1 asks for an isolated environment.
+  const dataDir = resolveDataDir();
 
-  if (process.env.DATA_DIR) {
-    addEnvPath(join(process.env.DATA_DIR, ".env"));
+  migrateElectronServerEnv(dataDir);
+
+  if (process.env.DATA_DIR?.trim()) {
+    addEnvPath(join(dataDir, ".env"));
   }
 
   // Hermetic commands (real CLI smokes, migrations, recovery probes) may point
@@ -204,7 +212,11 @@ function loadEnvFile() {
   // The package directory is replaced by the next `npm i -g`, so a .env kept
   // there is silently lost. Say so once, and only when that file actually
   // supplied something.
-  const durableEnvPath = join(process.env.DATA_DIR || getDefaultDataDir(), ".env");
+  // Resolved again on purpose: the loading loop above can set DATA_DIR from an env file,
+  // and the durable path must follow the effective value — exactly as it did before this
+  // change. Hoisting the earlier const here would freeze it to the pre-load value and make
+  // the warning's recommended destination disagree with where provisioning writes.
+  const durableEnvPath = join(resolveDataDir(), ".env");
   const suppliedKeys = [...keyOrigin.values()].some((origin) => origin === join(ROOT, ".env"));
   const volatileWarning = describeVolatileEnvWarning({
     envPath: join(ROOT, ".env"),

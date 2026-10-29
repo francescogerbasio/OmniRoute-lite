@@ -73,3 +73,26 @@ test("CLI env loader scans all env paths while preserving first value wins", () 
   assert.match(loaderSource, /if \(process\.env\[key\] === undefined\)/);
   assert.doesNotMatch(loaderSource, /Loaded env from \$\{envPath\}[\s\S]{0,80}\breturn;/);
 });
+
+test("CLI env loader normalizes DATA_DIR instead of joining it raw (issue #11)", () => {
+  const source = fs.readFileSync(BIN, "utf8");
+  const loaderStart = source.indexOf("function loadEnvFile()");
+  const loaderEnd = source.indexOf("loadEnvFile();", loaderStart);
+  const loaderSource = source.slice(loaderStart, loaderEnd);
+
+  // The data dir must go through the shared resolver (trim + absolutize), never through a
+  // raw `join(process.env.DATA_DIR, ...)` — a padded value would otherwise point env loading
+  // at a path that does not exist and the persisted key would never load.
+  assert.match(loaderSource, /const dataDir = resolveDataDir\(\);/);
+  assert.match(loaderSource, /migrateElectronServerEnv\(dataDir\)/);
+  assert.match(loaderSource, /addEnvPath\(join\(dataDir, "\.env"\)\)/);
+  assert.match(loaderSource, /if \(process\.env\.DATA_DIR\?\.trim\(\)\)/);
+  assert.doesNotMatch(loaderSource, /join\(process\.env\.DATA_DIR/);
+
+  // The durable path is resolved AFTER the loading loop on purpose: a loaded env file may
+  // set DATA_DIR, and the warning must point where provisioning actually writes.
+  const durableIdx = loaderSource.indexOf('const durableEnvPath = join(resolveDataDir(), ".env")');
+  const loopIdx = loaderSource.indexOf("for (const envPath of envPaths)");
+  assert.notEqual(durableIdx, -1, "durableEnvPath must use resolveDataDir()");
+  assert.ok(durableIdx > loopIdx, "durableEnvPath must be resolved after env files are loaded");
+});
