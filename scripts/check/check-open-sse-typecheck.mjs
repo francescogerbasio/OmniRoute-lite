@@ -18,10 +18,14 @@
 //   node scripts/check/check-open-sse-typecheck.mjs
 //   node scripts/check/check-open-sse-typecheck.mjs --update   # re-freeze baseline
 
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  classifyTscOutcome,
+  getTscCommand as buildTscCommand,
+  runTsc as executeTsc,
+} from "./lib/tscInvocation.mjs";
 import { diffAgainstBaseline, parseTscOutput } from "./typecheckBaseline.mjs";
 
 export { diffAgainstBaseline, parseTscOutput } from "./typecheckBaseline.mjs";
@@ -31,56 +35,47 @@ const TSCONFIG = path.join(ROOT, "open-sse", "tsconfig.json");
 const BASELINE_PATH = path.join(ROOT, "config/quality/open-sse-typecheck-baseline.json");
 const UPDATE = process.argv.includes("--update");
 
+const OPEN_SSE_TSCONFIG = path.join(ROOT, "open-sse", "tsconfig.json");
+
 /**
  * Execute the locally installed TypeScript CLI directly through Node.
  *
  * pnpm owns node_modules; resolving its TypeScript entrypoint explicitly avoids
  * remote npx downloads and Windows .cmd shim execution (EINVAL on recent Node).
  * No shell, package-manager subprocess, or PATH-dependent fallback is needed.
+ *
+ * Thin wrapper over the shared invocation helper (scripts/check/lib/tscInvocation.mjs) so this
+ * module's positional signature stays stable for its existing tests/callers.
  */
 export function getTscCommand(rootDir = ROOT, nodeExecutable = process.execPath) {
-  return {
-    command: nodeExecutable,
-    args: [
-      path.join(rootDir, "node_modules", "typescript", "bin", "tsc"),
-      "--pretty",
-      "false",
-      "--noEmit",
-      "-p",
-      path.join(rootDir, "open-sse", "tsconfig.json"),
-    ],
-  };
+  return buildTscCommand({
+    rootDir,
+    tsconfigPath: path.join(rootDir, "open-sse", "tsconfig.json"),
+    nodeExecutable,
+  });
 }
 
 /**
  * Runs TypeScript with an injectable process boundary for fast regression tests.
  * A non-zero tsc exit can still contain expected, baselined diagnostics on stdout, so the
- * exit status is reported to the caller instead of being swallowed.
+ * failure is reported to the caller instead of being swallowed.
  * @returns {{ stdout: string, failed: boolean }}
  */
 export function runTsc(options = {}) {
-  const { rootDir = ROOT, nodeExecutable = process.execPath, execFile = execFileSync } = options;
-  const { command, args } = getTscCommand(rootDir, nodeExecutable);
-  try {
-    const stdout = execFile(command, args, {
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-      cwd: rootDir,
-    });
-    return { stdout: String(stdout ?? ""), failed: false };
-  } catch (err) {
-    // TypeScript exits non-zero when there are type errors; preserve the report.
-    if (err.stdout) return { stdout: String(err.stdout), failed: true };
-    throw err;
-  }
+  const { rootDir = ROOT, nodeExecutable = process.execPath, execFile } = options;
+  const result = executeTsc({
+    rootDir,
+    tsconfigPath: path.join(rootDir, "open-sse", "tsconfig.json"),
+    nodeExecutable,
+    execFile,
+  });
+  return { stdout: result.stdout, failed: result.failed };
 }
 
 /**
- * A non-zero tsc exit with no PARSABLE diagnostics is not a type-error report — it is a
- * failed compiler invocation (bad tsconfig, missing input, CLI misuse) whose message usually
- * looks like "error TS5058: …" without the `file(line,col): error TSxxxx:` shape that
- * parseTscOutput understands. Treating that as "0 errors" would pass the gate (and `--update`
- * would freeze an empty baseline), so it fails closed.
+ * Legacy predicate kept for callers/tests: a non-zero exit with no parseable diagnostics is a
+ * failed invocation, not a report. main() uses the stricter shared classifier, which also
+ * rejects unpositioned diagnostics mixed with parseable ones.
  */
 export function isUnparsedTypecheckFailure({ failed, liveErrorCount }) {
   return failed === true && liveErrorCount === 0;
@@ -95,6 +90,31 @@ function writeBaseline(counts) {
   fs.writeFileSync(BASELINE_PATH, JSON.stringify(counts, null, 2) + "\n");
 }
 
+/**
+ * Runs the local compiler and classifies the result. Exported so the fail-closed decision can be
+ * unit-tested with an injected process boundary.
+ */
+export function evaluateTsc(options = {}) {
+  return classifyTscOutcome(
+    executeTsc({
+      rootDir: ROOT,
+      tsconfigPath: OPEN_SSE_TSCONFIG,
+      nodeExecutable: options.nodeExecutable,
+      execFile: options.execFile,
+    })
+  );
+}
+
+/** Reports a fatal compiler outcome (never baselinable, never written by --update). */
+function reportFatal(outcome) {
+  process.stderr.write(
+    `[open-sse-typecheck] FAIL — ${outcome.reason}. The compiler result cannot be compared with ` +
+      `the frozen baseline:\n` +
+      outcome.detail.map((line) => `  ✗ ${line}\n`).join("") +
+      `\nIf the compiler could not run, fix the local install (pnpm install --frozen-lockfile).\n`
+  );
+}
+
 function main() {
   if (!fs.existsSync(TSCONFIG)) {
     process.stderr.write(`[open-sse-typecheck] FAIL — tsconfig not found at ${TSCONFIG}\n`);
@@ -102,28 +122,26 @@ function main() {
   }
 
   console.log("[open-sse-typecheck] Running tsc scoped to open-sse/ workspace…");
-  const { stdout, failed } = runTsc();
-  const live = parseTscOutput(stdout);
-  const baseline = loadBaseline();
-  const { regressions, improvements } = diffAgainstBaseline(live, baseline);
-
-  const liveErrorCount = Object.values(live).reduce(
-    (sum, codes) => sum + Object.values(codes).reduce((s, c) => s + c, 0),
-    0
-  );
-
-  // Fail closed BEFORE the baseline is written or compared: a compiler invocation that failed
-  // without emitting parseable diagnostics is not "zero TypeScript errors".
-  if (isUnparsedTypecheckFailure({ failed, liveErrorCount })) {
-    const detail = stdout.trim().split("\n").slice(0, 10).join("\n");
+  let outcome;
+  try {
+    outcome = evaluateTsc();
+  } catch (err) {
     process.stderr.write(
-      "[open-sse-typecheck] FAIL — tsc exited non-zero without parseable diagnostics. " +
-        "This is a failed compiler invocation, not a type-error report:\n" +
-        (detail ? `${detail}\n` : "")
+      `[open-sse-typecheck] FAIL — could not run the local TypeScript compiler: ${err?.message ?? String(err)}\n` +
+        `  → expected ${path.join(ROOT, "node_modules", "typescript", "bin", "tsc")}\n` +
+        `  → fix the local install with 'pnpm install --frozen-lockfile'\n`
     );
     process.exit(2);
   }
+  if (outcome.kind === "fatal") {
+    reportFatal(outcome);
+    process.exit(2);
+  }
 
+  const live = outcome.live;
+  const liveErrorCount = outcome.liveErrorCount;
+  const baseline = loadBaseline();
+  const { regressions, improvements } = diffAgainstBaseline(live, baseline);
   console.log(`openSseTypecheckErrors=${liveErrorCount}`);
 
   if (UPDATE) {

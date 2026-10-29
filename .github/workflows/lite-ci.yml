@@ -130,7 +130,10 @@ jobs:
             tests/unit/build/check-lockfile.test.ts \
             tests/unit/build/lite-ci-install-order.test.ts \
             tests/unit/build/check-open-sse-pnpm-command.test.ts \
-            tests/unit/tproxy-build-native.test.ts
+            tests/unit/tproxy-build-native.test.ts \
+            tests/unit/build/tsc-invocation.test.ts \
+            tests/unit/build/check-api-typecheck.test.ts \
+            tests/unit/build/check-dashboard-typecheck.test.ts
 
       - name: Typecheck (core)
         run: pnpm run typecheck:core

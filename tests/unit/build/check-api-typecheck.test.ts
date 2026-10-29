@@ -3,6 +3,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   parseTscOutput,
   diffAgainstBaseline,
@@ -212,4 +216,75 @@ test("diffAgainstBaseline: accepts zero counts without fabricating a second impr
       ],
     }
   );
+});
+
+// ---------------------------------------------------------------------------
+// real gate process: fail-closed ordering and --update protection
+// ---------------------------------------------------------------------------
+
+const GATE = path.resolve(import.meta.dirname, "../../../scripts/check/check-api-typecheck.mjs");
+const TSCONFIG_NAME = "tsconfig.typecheck-api.json";
+const BASELINE_REL = "config/quality/api-typecheck-baseline.json";
+const POSITIONED = "src/app/api/foo/route.ts(1,2): error TS2339: Property 'bar' does not exist.\n";
+const UNPOSITIONED = "error TS6053: File '/tmp/missing.ts' not found.\n";
+
+function makeFixture(stdout: string, exitCode: number, withCompiler = true) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-api-gate-"));
+  fs.writeFileSync(path.join(dir, TSCONFIG_NAME), "{}\n");
+  fs.mkdirSync(path.join(dir, "config", "quality"), { recursive: true });
+  const baselineText = JSON.stringify({ "src/app/api/keep.ts": { TS2339: 1 } }, null, 2) + "\n";
+  fs.writeFileSync(path.join(dir, BASELINE_REL), baselineText);
+  if (withCompiler) {
+    const tscDir = path.join(dir, "node_modules", "typescript", "bin");
+    fs.mkdirSync(tscDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tscDir, "tsc"),
+      `process.stdout.write(${JSON.stringify(stdout)});\nprocess.exit(${exitCode});\n`
+    );
+  }
+  return { dir, baselinePath: path.join(dir, BASELINE_REL), baselineText };
+}
+
+function runGate(dir: string, args: string[] = []) {
+  const result = spawnSync(process.execPath, [GATE, ...args], { cwd: dir, encoding: "utf8" });
+  return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+test("mixed parseable + unpositioned output fails closed and --update leaves the baseline intact", (t) => {
+  const { dir, baselinePath, baselineText } = makeFixture(POSITIONED + UNPOSITIONED, 1);
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const result = runGate(dir, ["--update"]);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /FAIL — unpositioned compiler diagnostic/);
+  assert.equal(
+    fs.readFileSync(baselinePath, "utf8"),
+    baselineText,
+    "baseline must not be rewritten"
+  );
+});
+
+test("an unpositioned-only failure exits 2 without touching the baseline", (t) => {
+  const { dir, baselinePath, baselineText } = makeFixture(UNPOSITIONED, 1);
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const result = runGate(dir);
+  assert.equal(result.status, 2, result.stderr);
+  assert.equal(fs.readFileSync(baselinePath, "utf8"), baselineText);
+});
+
+test("a legitimate positioned-only run still ratchets the baseline with --update", (t) => {
+  const { dir, baselinePath } = makeFixture(POSITIONED, 2);
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const result = runGate(dir, ["--update"]);
+  assert.equal(result.status, 0, result.stderr);
+  const written = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+  assert.deepEqual(written, { "src/app/api/foo/route.ts": { TS2339: 1 } });
+});
+
+test("a missing local compiler fails explicitly instead of reporting zero errors", (t) => {
+  const { dir, baselinePath, baselineText } = makeFixture("", 0, false);
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  const result = runGate(dir);
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stderr, /could not run the local TypeScript compiler/);
+  assert.equal(fs.readFileSync(baselinePath, "utf8"), baselineText);
 });
