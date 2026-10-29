@@ -5,13 +5,57 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { provisionStorageKey } from "../../bin/cli/utils/storageKeyProvision.mjs";
+import {
+  provisionStorageKey,
+  shouldProvisionStorageKey,
+} from "../../bin/cli/utils/storageKeyProvision.mjs";
 import { getDefaultDataDir } from "../../bin/cli/data-dir.mjs";
 
-// Issue #11 follow-up: the CLI's STORAGE_ENCRYPTION_KEY provisioning must resolve its
-// data dir through the SAME shared helper the app uses (DATA_DIR override or
-// getDefaultDataDir()) — under XDG/Windows an independent homedir guess would split
-// secrets from the database — and must stay idempotent across restarts.
+// Issue #11 follow-up: the CLI's STORAGE_ENCRYPTION_KEY provisioning must
+//   * stay scoped to commands that touch encrypted storage — a purely informational
+//     invocation must never create the data dir or write a key; and
+//   * resolve its data dir through the SAME shared helper the app uses (DATA_DIR override
+//     or getDefaultDataDir()) — under XDG/Windows an independent homedir guess would split
+//     secrets from the database — and must stay idempotent across restarts.
+
+// argv shape is [node, script, ...args]
+const argv = (...args: string[]) => ["node", "omniroute", ...args];
+
+test("storage key: informational commands do NOT provision a key", () => {
+  assert.equal(shouldProvisionStorageKey(argv("--version")), false);
+  assert.equal(shouldProvisionStorageKey(argv("-V")), false);
+  assert.equal(shouldProvisionStorageKey(argv("--help")), false);
+  assert.equal(shouldProvisionStorageKey(argv("-h")), false);
+  assert.equal(shouldProvisionStorageKey(argv("help")), false);
+  assert.equal(shouldProvisionStorageKey(argv("completion")), false);
+});
+
+test("storage key: bare `omniroute` provisions (serve is the default command)", () => {
+  // No args → Commander runs the isDefault `serve` command, which needs the key.
+  assert.equal(shouldProvisionStorageKey(argv()), true);
+});
+
+test("storage key: --help/--version anywhere in the args still skips", () => {
+  assert.equal(shouldProvisionStorageKey(argv("serve", "--help")), false);
+  assert.equal(shouldProvisionStorageKey(argv("keys", "list", "-h")), false);
+  assert.equal(shouldProvisionStorageKey(argv("--lang", "en", "--version")), false);
+});
+
+test("storage key: real commands DO provision (preserves #1622 persistence)", () => {
+  assert.equal(shouldProvisionStorageKey(argv("serve")), true);
+  assert.equal(shouldProvisionStorageKey(argv("keys", "list")), true);
+  assert.equal(shouldProvisionStorageKey(argv("providers")), true);
+  assert.equal(shouldProvisionStorageKey(argv("serve", "--port", "20128")), true);
+  // global --lang option before a real command must not suppress provisioning
+  assert.equal(shouldProvisionStorageKey(argv("--lang", "en", "serve")), true);
+});
+
+test("storage key: defensive on non-array input → fail-safe to provisioning", () => {
+  // Non-array argv collapses to [] → treated as a bare invocation (default serve),
+  // so it provisions. Fail-safe: better to have the key than to skip it.
+  // @ts-expect-error intentional bad input
+  assert.equal(shouldProvisionStorageKey(undefined), true);
+});
 
 function withTempEnv(fn: (paths: { root: string; home: string }) => void): void {
   const originalEnv: Record<string, string | undefined> = { ...process.env };
@@ -107,8 +151,14 @@ test("provisionStorageKey refuses to generate when a database already exists", (
 test("bin/omniroute.mjs resolves provisioning via the shared resolver (source contract)", () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const src = fs.readFileSync(path.join(repoRoot, "bin/omniroute.mjs"), "utf8");
-  // Both the secret-tightening and the key provision must use the shared resolver.
-  assert.match(src, /process\.env\.DATA_DIR \|\| getDefaultDataDir\(\)/);
+  // The secret-tightening and the key provision must both go through resolveDataDir(),
+  // which trims + absolutizes DATA_DIR exactly like the database resolver does.
+  assert.match(src, /import\s*\{[^}]*\bresolveDataDir\b[^}]*\}\s*from\s*"\.\/cli\/data-dir\.mjs"/);
+  assert.match(src, /const provisionDataDir = resolveDataDir\(\);/);
+  assert.doesNotMatch(
+    src,
+    /const provisionDataDir = process\.env\.DATA_DIR \|\| getDefaultDataDir\(\)/
+  );
   // No independent homedir-based data-dir guesses may remain in the CLI entry.
   assert.doesNotMatch(src, /homedir\(\)\s*,\s*["'`]\.omniroute(-lite)?["'`]/);
 });

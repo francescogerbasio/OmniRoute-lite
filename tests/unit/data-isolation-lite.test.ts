@@ -129,6 +129,20 @@ test("resolver parity: explicit DATA_DIR wins for core, CLI, MITM and WebDAV", a
   });
 });
 
+test("resolver parity: DATA_DIR is trimmed and absolutized for every resolver", async () => {
+  await withTempEnv(({ root }) => {
+    const configured = path.join(root, "padded-data");
+    process.env.DATA_DIR = `  ${configured}  `;
+    const expected = path.resolve(configured);
+
+    assert.equal(resolveDataDir(), expected);
+    assert.equal(cliResolveDataDir(), expected);
+    assert.equal(resolveMitmDataDir(), expected);
+    assert.equal(webdavResolveDataDir(), expected);
+    assert.equal(syncEnvResolveDataDir(), expected);
+  });
+});
+
 test("resolver parity: XDG_CONFIG_HOME → <xdg>/omniroute-lite for every resolver", async () => {
   await withTempEnv(({ root }) => {
     const xdg = path.join(root, "xdg");

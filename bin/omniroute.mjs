@@ -25,7 +25,7 @@ try {
 }
 import { isNativeBinaryCompatible } from "../scripts/build/native-binary-compat.mjs";
 import { getNodeRuntimeSupport, getNodeRuntimeWarning } from "./nodeRuntimeSupport.mjs";
-import { getDefaultDataDir } from "./cli/data-dir.mjs";
+import { getDefaultDataDir, resolveDataDir } from "./cli/data-dir.mjs";
 import {
   provisionStorageKey,
   shouldProvisionStorageKey,
@@ -241,10 +241,13 @@ if (shouldProvisionStorageKey(process.argv)) {
   // world-traversable data dir. Repair them on every run that touches encrypted storage
   // (best-effort; group bits are kept). Informational commands never reach this block.
   //
-  // Resolve through the shared CLI resolver (getDefaultDataDir): under XDG_CONFIG_HOME
+  // Resolve through the shared CLI resolver (resolveDataDir): under XDG_CONFIG_HOME
   // or Windows the runtime data dir is NOT ~/.omniroute-lite, and secrets must be
-  // tightened and persisted in the SAME directory the app resolves (issue #11).
-  const provisionDataDir = process.env.DATA_DIR || getDefaultDataDir();
+  // tightened and persisted in the SAME directory the app resolves (issue #11). Using
+  // resolveDataDir() — not `DATA_DIR || getDefaultDataDir()` — also gives an explicit
+  // DATA_DIR the same trimming + absolutization the database resolver applies, so the
+  // key, the database and the repaired permissions can never disagree about the path.
+  const provisionDataDir = resolveDataDir();
   tightenDataDirSecrets(provisionDataDir);
 
   if (!process.env.STORAGE_ENCRYPTION_KEY) {
