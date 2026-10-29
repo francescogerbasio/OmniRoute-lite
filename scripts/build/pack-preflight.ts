@@ -89,9 +89,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Parses `pnpm pack --json` output. pnpm 12 emits a single object
- * `{ name, version, filename, files: [{ path }] }` for a single-package pack; an array is
- * accepted too so a future recursive invocation cannot silently disable the gate.
+ * Parses `pnpm pack --json` output.
+ *
+ * pnpm 12 emits a single object `{ name, version, filename, files: [{ path }] }` for a
+ * single-package pack. An array is accepted ONLY as exactly one report: silently taking
+ * `[0]` would ignore additional packages (and any policy violation they carry). Every file
+ * entry and every metadata field is validated — malformed data is an error, never filtered.
  */
 export function parsePnpmPackJson(raw: string): PnpmPackReport {
   let parsed: unknown;
@@ -102,21 +105,59 @@ export function parsePnpmPackJson(raw: string): PnpmPackReport {
       `pnpm pack did not return valid JSON: ${String((error as Error)?.message ?? error)}`
     );
   }
-  const report = Array.isArray(parsed) ? parsed[0] : parsed;
+
+  let report: unknown;
+  if (Array.isArray(parsed)) {
+    if (parsed.length !== 1) {
+      throw new Error(
+        `pnpm pack returned ${parsed.length} reports; exactly one is required (refusing to ignore packages)`
+      );
+    }
+    report = parsed[0];
+  } else {
+    report = parsed;
+  }
   if (!isRecord(report)) throw new Error("pnpm pack JSON report is not an object");
+
+  const name = typeof report.name === "string" ? report.name.trim() : "";
+  if (!name) throw new Error("pnpm pack report has no package `name` (cannot verify the artifact)");
+  const version = typeof report.version === "string" ? report.version.trim() : "";
+  if (!version)
+    throw new Error("pnpm pack report has no package `version` (cannot verify the artifact)");
+  const filename = typeof report.filename === "string" ? report.filename.trim() : "";
+  if (!filename) throw new Error("pnpm pack report has no tarball `filename`");
+
   if (!Array.isArray(report.files)) {
     throw new Error("pnpm pack JSON report has no `files[]` list (cannot verify the artifact)");
   }
-  const files = report.files
-    .map((entry) => (isRecord(entry) && typeof entry.path === "string" ? entry.path : null))
-    .filter((file): file is string => typeof file === "string" && file.length > 0);
+  const files = report.files.map((entry, index) => {
+    if (!isRecord(entry) || typeof entry.path !== "string" || entry.path.trim() === "") {
+      throw new Error(
+        `pnpm pack report has a malformed files[${index}] entry (expected { path: non-empty string })`
+      );
+    }
+    return entry.path;
+  });
   if (files.length === 0) throw new Error("pnpm pack reported an empty file list");
-  return {
-    name: typeof report.name === "string" ? report.name : "",
-    version: typeof report.version === "string" ? report.version : "",
-    filename: typeof report.filename === "string" ? report.filename : "",
-    files,
-  };
+
+  return { name, version, filename, files };
+}
+
+/** The packed identity must be the manifest we inspected, or the verdict is meaningless. */
+export function verifyReportMatchesManifest(
+  manifest: Pick<ManifestInspection, "name" | "version">,
+  report: PnpmPackReport
+): string[] {
+  const errors: string[] = [];
+  if (report.name !== manifest.name) {
+    errors.push(`packed name "${report.name}" does not match manifest name "${manifest.name}"`);
+  }
+  if (report.version !== manifest.version) {
+    errors.push(
+      `packed version "${report.version}" does not match manifest version "${manifest.version}"`
+    );
+  }
+  return errors;
 }
 
 /** Package metadata + `bin`/`files` sanity, without packing or building anything. */
@@ -310,10 +351,17 @@ function printReport(
   pack: PnpmPackReport | null,
   evaluation: PackArtifactEvaluation | null,
   flags: ParsedFlags,
-  packError?: string
+  packError?: string,
+  identityMismatches: string[] = []
 ): void {
   if (flags.json) {
-    console.log(JSON.stringify({ manifest, pack, evaluation, error: packError ?? null }, null, 2));
+    console.log(
+      JSON.stringify(
+        { manifest, pack, evaluation, identityMismatches, error: packError ?? null },
+        null,
+        2
+      )
+    );
     return;
   }
   const mode = flags.real ? "pnpm pack" : "pnpm pack --dry-run";
@@ -323,6 +371,13 @@ function printReport(
   for (const warning of manifest.warnings) console.log(`[pack-preflight] warning: ${warning}`);
   if (packError) {
     console.error(`[pack-preflight] FAIL — ${packError}`);
+    return;
+  }
+  if (identityMismatches.length > 0) {
+    console.error(
+      "[pack-preflight] FAIL — the packed identity does not match the inspected manifest:"
+    );
+    for (const mismatch of identityMismatches) console.error(`  ✗ ${mismatch}`);
     return;
   }
   if (!pack || !evaluation) return;
@@ -383,6 +438,13 @@ function main(): void {
   } catch (error) {
     const message = String((error as Error)?.message ?? error);
     printReport(manifest, null, null, flags, message);
+    process.exit(1);
+  }
+
+  // The verdict is only meaningful for the manifest we inspected.
+  const identityMismatches = verifyReportMatchesManifest(manifest, pack);
+  if (identityMismatches.length > 0) {
+    printReport(manifest, pack, null, flags, undefined, identityMismatches);
     process.exit(1);
   }
 

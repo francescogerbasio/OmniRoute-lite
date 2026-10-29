@@ -18,6 +18,7 @@ import {
   parsePnpmPackJson,
   parseArgs,
   runPack,
+  verifyReportMatchesManifest,
 } from "../../../scripts/build/pack-preflight.ts";
 
 const ROOT = path.join(import.meta.dirname, "../../..");
@@ -57,15 +58,96 @@ test("parses the pnpm 12 single-object report", () => {
   assert.deepEqual(report.files, ["package.json", "dist/server.js"]);
 });
 
-test("accepts an array report but rejects unusable output", () => {
-  const arrayReport = parsePnpmPackJson(
-    JSON.stringify([{ name: "fixture", version: "1.0.0", files: [{ path: "package.json" }] }])
+test("accepts exactly one array report and rejects unusable output", () => {
+  const single = parsePnpmPackJson(
+    JSON.stringify([
+      {
+        name: "fixture",
+        version: "1.0.0",
+        filename: "fixture-1.0.0.tgz",
+        files: [{ path: "package.json" }],
+      },
+    ])
   );
-  assert.deepEqual(arrayReport.files, ["package.json"]);
+  assert.deepEqual(single.files, ["package.json"]);
+
+  // A second report must never be ignored: it could carry a policy-violating package.
+  assert.throws(
+    () =>
+      parsePnpmPackJson(
+        JSON.stringify([
+          { name: "a", version: "1.0.0", filename: "a.tgz", files: [{ path: "package.json" }] },
+          {
+            name: "b",
+            version: "1.0.0",
+            filename: "b.tgz",
+            files: [{ path: "node_modules/x.js" }],
+          },
+        ])
+      ),
+    /returned 2 reports; exactly one is required \(refusing to ignore packages\)/
+  );
+  assert.throws(() => parsePnpmPackJson("[]"), /returned 0 reports/);
 
   assert.throws(() => parsePnpmPackJson("not json"), /did not return valid JSON/);
-  assert.throws(() => parsePnpmPackJson('{"name":"x"}'), /no `files\[\]` list/);
-  assert.throws(() => parsePnpmPackJson('{"files":[]}'), /empty file list/);
+  assert.throws(
+    () => parsePnpmPackJson('{"name":"x"}'),
+    /no package `name`|no package `version`|no tarball `filename`/
+  );
+  assert.throws(
+    () => parsePnpmPackJson('{"name":"x","version":"1.0.0","filename":"x.tgz"}'),
+    /no `files\[\]` list/
+  );
+  assert.throws(
+    () => parsePnpmPackJson('{"name":"x","version":"1.0.0","filename":"x.tgz","files":[]}'),
+    /empty file list/
+  );
+});
+
+test("malformed file entries and metadata are rejected, never filtered", () => {
+  const report = (files: unknown, extra: Record<string, unknown> = {}) =>
+    JSON.stringify({ name: "x", version: "1.0.0", filename: "x.tgz", files, ...extra });
+
+  for (const [files, expected] of [
+    [[{ path: null }], /malformed files\[0\]/],
+    [[{}], /malformed files\[0\]/],
+    [["package.json"], /malformed files\[0\]/],
+    [[{ path: "" }], /malformed files\[0\]/],
+    [[{ path: "  " }], /malformed files\[0\]/],
+    [[{ path: "ok" }, { path: 42 }], /malformed files\[1\]/],
+  ] as const) {
+    assert.throws(() => parsePnpmPackJson(report(files)), expected, JSON.stringify(files));
+  }
+
+  assert.throws(
+    () => parsePnpmPackJson(report([{ path: "a" }], { name: "" })),
+    /no package `name`/
+  );
+  assert.throws(
+    () => parsePnpmPackJson(report([{ path: "a" }], { version: "" })),
+    /no package `version`/
+  );
+  assert.throws(
+    () => parsePnpmPackJson(report([{ path: "a" }], { filename: "" })),
+    /no tarball `filename`/
+  );
+});
+
+test("the packed identity must match the inspected manifest", () => {
+  const manifest = { name: "omniroute", version: "3.8.52" };
+  const pack = (name: string, version: string) => ({
+    name,
+    version,
+    filename: "x.tgz",
+    files: ["package.json"],
+  });
+
+  assert.deepEqual(verifyReportMatchesManifest(manifest, pack("omniroute", "3.8.52")), []);
+  const mismatches = verifyReportMatchesManifest(manifest, pack("other", "9.9.9"));
+  assert.equal(mismatches.length, 2);
+  assert.match(mismatches[0], /packed name "other" does not match manifest name "omniroute"/);
+  assert.match(mismatches[1], /packed version "9.9.9" does not match manifest version "3.8.52"/);
+  assert.equal(verifyReportMatchesManifest(manifest, pack("omniroute", "9.9.9")).length, 1);
 });
 
 // ---------------------------------------------------------------------------
