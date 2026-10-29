@@ -11,6 +11,9 @@ import os from "node:os";
 import path from "node:path";
 
 // @ts-expect-error — .ts helper; runtime shape is known.
+import { PACK_ARTIFACT_REQUIRED_PATHS } from "../../../scripts/build/pack-artifact-policy.ts";
+
+// @ts-expect-error — .ts helper; runtime shape is known.
 import {
   buildPackArgs,
   evaluatePackArtifact,
@@ -154,59 +157,82 @@ test("the packed identity must match the inspected manifest", () => {
 // policy evaluation / severity model
 // ---------------------------------------------------------------------------
 
-const REQUIRED = ["dist/server.js", "bin/omniroute.mjs", "config/app.json"];
-const COMPLETE_FILES = ["package.json", "bin/omniroute.mjs", "config/app.json", "dist/server.js"];
-// Hermetic policy: the synthetic paths above are not the product's allowlist.
-const POLICY = {
-  requiredPaths: REQUIRED,
-  allowedExactPaths: ["package.json", "config/app.json", "bin/omniroute.mjs"],
-  allowedPrefixes: ["dist/"],
-};
+// The real production policy: these are the paths a built package must contain.
+const REQUIRED = PACK_ARTIFACT_REQUIRED_PATHS;
+const DIST_REQUIRED = REQUIRED.filter((file) => file.startsWith("dist/"));
 
-test("a complete, policy-clean artifact is valid", () => {
-  const evaluation = evaluatePackArtifact(COMPLETE_FILES, POLICY);
+test("production defaults accept every required artifact (Codex P2 regression)", () => {
+  // Before the fix the defaults used the ROOT-only allowlists, so all 16 dist/ build artifacts
+  // were flagged unexpected and a fully built package evaluated as INVALID.
+  assert.ok(DIST_REQUIRED.length > 0, "the policy must exercise real dist/ build outputs");
+  const evaluation = evaluatePackArtifact(REQUIRED);
+  assert.deepEqual(evaluation.unexpected, []);
+  assert.equal(evaluation.missingRequired.length, 0);
   assert.equal(evaluation.status, "valid");
   assert.equal(evaluation.ok, true);
-  assert.deepEqual(evaluation.missingRequired, []);
 });
 
-test("only missing dist/ artifacts is INCOMPLETE, never 'valid'", () => {
-  const files = ["package.json", "bin/omniroute.mjs", "config/app.json"];
-  const unbuilt = evaluatePackArtifact(files, POLICY);
-  assert.equal(unbuilt.status, "incomplete");
-  assert.equal(unbuilt.ok, true, "unbuilt checkouts must not fail the default preflight");
-  assert.deepEqual(unbuilt.missingBuildArtifacts, ["dist/server.js"]);
-  assert.deepEqual(unbuilt.missingSourceArtifacts, []);
+test("a complete required set is VALID", () => {
+  const evaluation = evaluatePackArtifact(REQUIRED);
+  assert.equal(evaluation.status, "valid");
+  assert.equal(evaluation.missingBuildArtifacts.length, 0);
+});
 
-  const strict = evaluatePackArtifact(files, { ...POLICY, requireComplete: true });
+test("only a missing dist/ build artifact is INCOMPLETE, and --require-complete fails", () => {
+  const files = REQUIRED.filter((file) => file !== DIST_REQUIRED[0]);
+  const unbuilt = evaluatePackArtifact(files);
+  assert.equal(unbuilt.status, "incomplete");
+  assert.equal(unbuilt.ok, true, "an unbuilt checkout must not fail the default preflight");
+  assert.deepEqual(unbuilt.missingBuildArtifacts, [DIST_REQUIRED[0]]);
+  assert.deepEqual(unbuilt.missingSourceArtifacts, []);
+  assert.equal(unbuilt.unexpected.length, 0, "legitimate dist paths must not be flagged");
+
+  const strict = evaluatePackArtifact(files, { requireComplete: true });
   assert.equal(strict.status, "incomplete");
   assert.equal(strict.ok, false, "--require-complete must reject an unbuilt artifact");
 });
 
 test("a missing non-build file is invalid even without a build", () => {
-  const evaluation = evaluatePackArtifact(["package.json"], POLICY);
+  const sourceFile = REQUIRED.find((file) => !file.startsWith("dist/"))!;
+  const evaluation = evaluatePackArtifact(REQUIRED.filter((file) => file !== sourceFile));
   assert.equal(evaluation.status, "invalid");
   assert.equal(evaluation.ok, false);
-  assert.deepEqual(evaluation.missingSourceArtifacts, ["bin/omniroute.mjs", "config/app.json"]);
+  assert.deepEqual(evaluation.missingSourceArtifacts, [sourceFile]);
+});
+
+test("an unexpected file under dist/ is still rejected", () => {
+  const evaluation = evaluatePackArtifact([...REQUIRED, "dist/evil.sh"]);
+  assert.equal(evaluation.status, "invalid");
+  assert.ok(evaluation.unexpected.includes("dist/evil.sh"));
+});
+
+test("node_modules leakage is rejected even under permitted dist prefixes", () => {
+  const evaluation = evaluatePackArtifact([
+    ...REQUIRED,
+    "node_modules/dep/index.js",
+    "dist/src/lib/node_modules/dep/index.js",
+  ]);
+  assert.equal(evaluation.status, "invalid");
+  assert.ok(evaluation.unexpected.includes("node_modules/dep/index.js"));
+  assert.ok(evaluation.unexpected.includes("dist/src/lib/node_modules/dep/index.js"));
+});
+
+test("root restrictions remain enforced", () => {
+  const rootLeak = evaluatePackArtifact([...REQUIRED, "docs/private.md", "random.txt"]);
+  assert.equal(rootLeak.status, "invalid");
+  assert.ok(rootLeak.unexpected.includes("docs/private.md"));
+  assert.ok(rootLeak.unexpected.includes("random.txt"));
+
+  const testLeak = evaluatePackArtifact([...REQUIRED, "tests/leaked.test.ts"]);
+  assert.equal(testLeak.status, "invalid");
+  assert.deepEqual(testLeak.leaked, ["tests/leaked.test.ts"]);
 });
 
 test("invalid dominates incomplete", () => {
-  const evaluation = evaluatePackArtifact(
-    ["bin/omniroute.mjs", "config/app.json", "tests/leaked.test.ts"],
-    POLICY
-  );
+  const files = REQUIRED.filter((file) => file !== DIST_REQUIRED[0]);
+  const evaluation = evaluatePackArtifact([...files, "tests/leaked.test.ts"]);
   assert.equal(evaluation.status, "invalid");
   assert.deepEqual(evaluation.leaked, ["tests/leaked.test.ts"]);
-});
-
-test("unexpected paths and node_modules are rejected", () => {
-  const evaluation = evaluatePackArtifact(
-    [...COMPLETE_FILES, "unexpected/secret.txt", "node_modules/dep/index.js"],
-    POLICY
-  );
-  assert.equal(evaluation.status, "invalid");
-  assert.ok(evaluation.unexpected.includes("unexpected/secret.txt"));
-  assert.ok(evaluation.unexpected.includes("node_modules/dep/index.js"));
 });
 
 // ---------------------------------------------------------------------------
@@ -376,6 +402,8 @@ test("CLI flags parse and unknown flags fail with usage exit code", () => {
   assert.equal(parsed.requireComplete, true);
   assert.equal(parsed.json, true);
   assert.equal(parsed.root, path.resolve("/repo", "fixture"));
+  // pnpm forwards the `--` separator from `pnpm run <script> -- --flag`.
+  assert.equal(parseArgs(["--", "--require-complete"], "/repo").requireComplete, true);
   assert.throws(() => parseArgs(["--nope"], "/repo"), /unknown argument/);
 });
 

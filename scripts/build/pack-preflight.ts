@@ -32,9 +32,9 @@ import { pathToFileURL } from "node:url";
 
 import { findLeakedTestArtifactPaths } from "./mcpPublishedFilesClosure.ts";
 import {
+  PACK_ARTIFACT_ALLOWED_EXACT_PATHS,
+  PACK_ARTIFACT_ALLOWED_PATH_PREFIXES,
   PACK_ARTIFACT_REQUIRED_PATHS,
-  PACK_ARTIFACT_ROOT_ALLOWED_EXACT_PATHS,
-  PACK_ARTIFACT_ROOT_ALLOWED_PATH_PREFIXES,
   findMissingArtifactPaths,
   findUnexpectedArtifactPaths,
 } from "./pack-artifact-policy.ts";
@@ -272,9 +272,11 @@ export function evaluatePackArtifact(
   {
     requiredPaths = PACK_ARTIFACT_REQUIRED_PATHS,
     requireComplete = false,
-    // Defaults are the repository policy; tests may narrow them to stay hermetic.
-    allowedExactPaths = PACK_ARTIFACT_ROOT_ALLOWED_EXACT_PATHS,
-    allowedPrefixes = PACK_ARTIFACT_ROOT_ALLOWED_PATH_PREFIXES,
+    // Defaults are the full repository policy: the root entries AND the permitted `dist/`
+    // standalone-build paths. Using the root-only lists here would flag the 16 required build
+    // artifacts as unexpected and make a complete package read as INVALID (Codex P2).
+    allowedExactPaths = PACK_ARTIFACT_ALLOWED_EXACT_PATHS,
+    allowedPrefixes = PACK_ARTIFACT_ALLOWED_PATH_PREFIXES,
   }: {
     requiredPaths?: string[];
     requireComplete?: boolean;
@@ -330,6 +332,8 @@ export function parseArgs(argv: string[], cwd = process.cwd()): ParsedFlags {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
+    // `pnpm run <script> -- --flag` forwards the separator; it is not an unknown flag.
+    if (arg === "--") continue;
     if (arg === "--real") flags.real = true;
     else if (arg === "--require-complete") flags.requireComplete = true;
     else if (arg === "--json") flags.json = true;
