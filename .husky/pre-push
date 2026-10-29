@@ -2,12 +2,12 @@
 # .husky/pre-push — intentionally light.
 # any-budget + tracked-artifacts already run on pre-commit; re-running them on
 # every push only doubles local wall time for the same existence reason (CI still
-# enforces both). Keep this hook as a PATH/npm sanity check + reminder.
+# enforces both). Keep this hook as a PATH/pnpm sanity check + reminder.
 # Intentionally excludes test:unit / typecheck (slow; covered by CI).
 
-if ! command -v npm >/dev/null 2>&1; then
-  echo "⚠️  npm not found in PATH — skipping pre-push hooks"
-  echo "   Run 'npm run check:any-budget:t11 && npm run check:tracked-artifacts' manually before pushing."
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "⚠️  pnpm not found in PATH — skipping pre-push hooks"
+  echo "   Run 'pnpm run check:any-budget:t11 && pnpm run check:tracked-artifacts' manually before pushing."
   exit 0
 fi
 

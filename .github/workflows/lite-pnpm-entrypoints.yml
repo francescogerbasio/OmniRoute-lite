@@ -1,0 +1,71 @@
+name: Lite pnpm entrypoints
+
+# Lightweight, PR-scoped validation of the pnpm entry-point contract (issue #13, phase 1).
+#
+# WHY THIS EXISTS: the Phase 1 regression guard (tests/unit/pnpm-entrypoints.test.ts plus the
+# serial-quarantine, pre-commit-safety and gate-manifest contracts) is the deliverable — a guard
+# that only runs on a laptop rots silently. `lite-data-isolation.yml` deliberately stays narrow
+# (data isolation + CLI only), so this workflow runs exactly the entry-point contracts.
+#
+# Deliberately narrow: NO production build, NO typecheck, NO full unit suite. It must stay cheap
+# enough to run on every PR and finish in a couple of minutes. Failures here mean the repo drifted
+# back to npm/npx in an active entry point, or the gate inventory no longer matches package.json.
+#
+# Additive only: the inherited upstream workflows remain disabled at the repository level and are
+# migrated in phase 2 (issue #13). This file does not re-enable or rewrite any of them; phase 2
+# should fold this job into the maintained Lite CI job and make it a required status.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  workflow_dispatch:
+
+concurrency:
+  group: lite-pnpm-entrypoints-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  entrypoints:
+    name: pnpm entrypoints (no build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm (from packageManager)
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.8.2
+          run_install: false
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: pnpm
+
+      # Needed verbatim in case a contract test ever imports a project module; today the four
+      # files only use node:* builtins, but the runner must not depend on that coincidence.
+      - name: Install dependencies (pnpm only)
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm entry-point contracts
+        run: |
+          node --import tsx/esm \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/pnpm-entrypoints.test.ts \
+            tests/unit/test-serial-quarantine.test.ts \
+            tests/unit/build/pre-commit-safety.test.ts \
+            tests/unit/build/gate-manifest.test.ts
+
+      # The inventory compares every validation alias command VERBATIM against package.json;
+      # running it through pnpm also proves the `check:` entry point resolves without npm.
+      - name: Gate inventory matches package.json
+        run: pnpm run --silent check:gate-manifest

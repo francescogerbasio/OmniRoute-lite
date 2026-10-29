@@ -20,11 +20,11 @@ function fixture() {
   return { scripts, manifest };
 }
 
-test("manifest resolves the npm entrypoint, preserving its chosen runtime", () => {
+test("manifest resolves the pnpm entrypoint, preserving its chosen runtime", () => {
   const { scripts, manifest } = fixture();
   assert.deepEqual(validateManifest(manifest, scripts), []);
   assert.deepEqual(resolveProfile(manifest, scripts, "scan"), [
-    { name: "check:a", cmd: ["npm", "run", "--silent", "check:a"] },
+    { name: "check:a", cmd: ["pnpm", "run", "--silent", "check:a"] },
   ]);
 });
 
