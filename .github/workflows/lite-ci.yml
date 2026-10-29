@@ -1,0 +1,142 @@
+name: Lite CI
+
+# Maintained CI for the OmniRoute Lite fork (issue #13 phase 2, follow-up #23).
+#
+# Replaces lite-data-isolation.yml and lite-pnpm-entrypoints.yml with one workflow that keeps
+# every check those workflows provided and adds a small offline regression set for the
+# OpenAI-compatible /v1 surface. The inherited upstream workflows stay disabled at the
+# repository level (npm-based, and this fork has no root package-lock.json); do not re-enable
+# them here — production builds, packaging and the full suite are validated elsewhere.
+#
+# Deliberately cheap: no production build, no full unit suite, no native packaging. Two jobs:
+#   - "Entrypoint contracts": dependency-free source contracts, no install needed.
+#   - "Typecheck + tests": one pnpm install, then the core typecheck and two bounded test steps.
+
+on:
+  pull_request:
+    branches: [main]
+    # Draft PRs must get feedback too; `converted_to_draft` keeps a re-opened draft validated.
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  # Post-merge validation, so "green on a PR head" is not the only evidence.
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Same convention as the inherited workflows: never mutate the runner's OS trust store.
+  OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
+
+jobs:
+  contracts:
+    name: Entrypoint contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm (from packageManager)
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.8.2
+          run_install: false
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      # These four files are pure source contracts: package.json, the tracked hooks, the gate
+      # inventory and the quarantine wiring. They import no project module, so Node 26's native
+      # TypeScript type-stripping runs them with no install and no tsx loader (~1 s). If a
+      # contract ever grows a project import, add `pnpm install --frozen-lockfile` plus
+      # `--import tsx/esm` here rather than weakening the assertion.
+      - name: pnpm entry-point contracts
+        run: |
+          node --test --test-force-exit --test-concurrency=1 \
+            tests/unit/pnpm-entrypoints.test.ts \
+            tests/unit/test-serial-quarantine.test.ts \
+            tests/unit/build/pre-commit-safety.test.ts \
+            tests/unit/build/gate-manifest.test.ts
+
+      # The inventory compares every validation alias command VERBATIM against package.json;
+      # running it through pnpm also proves the `check:` entry point resolves without npm.
+      - name: Gate inventory matches package.json
+        run: pnpm run --silent check:gate-manifest
+
+  core:
+    name: Typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm (from packageManager)
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.8.2
+          run_install: false
+
+      - name: Set up Node.js 26
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: pnpm
+
+      - name: Install dependencies (pnpm only)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (core)
+        run: pnpm run typecheck:core
+
+      # Data isolation + CLI regression tests (issue #11). Hermetic: DATA_DIR lives inside the
+      # runner temp dir and the preload isolates HOME, so nothing reads or writes a real
+      # ~/.omniroute or ~/.omniroute-lite directory.
+      - name: Data isolation + CLI regression tests
+        env:
+          DATA_DIR: ${{ runner.temp }}/omniroute-lite-ci-data
+          DISABLE_SQLITE_AUTO_BACKUP: "true"
+        run: |
+          node --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts \
+            --import ./tests/_setup/isolateDataDir.ts \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/data-isolation-lite.test.ts \
+            tests/unit/cli-data-dir-env.test.ts \
+            tests/unit/cli-storage-key-provision.test.ts \
+            tests/unit/cli-storage-key-bootstrap.test.ts
+
+      # OpenAI-compatible surface: /v1 pipeline + 401, /v1 JSON error contract, client API-key
+      # policy, SSE framing, streaming translation, tool calls, stream lifecycle. Every file
+      # mocks upstream fetch or is pure; DATA_DIR is intentionally unset so the preload creates
+      # a fresh temp dir per test process. Run as its own invocation so a failure here is
+      # unambiguous and does not mask the data-isolation step.
+      - name: API, auth, streaming and translation contracts
+        env:
+          DISABLE_SQLITE_AUTO_BACKUP: "true"
+        run: |
+          node --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts \
+            --import ./tests/_setup/isolateDataDir.ts \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/chat-route-coverage.test.ts \
+            tests/unit/api/v1-catchall-json-404.test.ts \
+            tests/unit/authz/client-api-policy.test.ts \
+            tests/unit/10017-sse-control-lines-leak-openai-clients.test.ts \
+            tests/unit/translator-stream-transform.test.ts \
+            tests/unit/tool-use-id-sanitization.test.ts \
+            tests/unit/stream-utilities.test.ts
