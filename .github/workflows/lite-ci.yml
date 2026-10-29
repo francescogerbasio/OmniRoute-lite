@@ -97,21 +97,38 @@ jobs:
           node-version: "26"
           cache: pnpm
 
-      - name: Install dependencies (pnpm only)
-        run: pnpm install --frozen-lockfile
+      # PREVENTIVE ordering (issue #13/#23): dependencies are installed WITHOUT lifecycle
+      # scripts, so a compromised lockfile cannot execute install scripts before the gate below
+      # has approved the graph. Everything this job needs ships as prebuilt binaries:
+      # better-sqlite3 (gypfile:false + prebuilds, no install script), esbuild and sharp
+      # (platform binaries from optional deps). Do NOT add `pnpm install` without
+      # --ignore-scripts, `pnpm rebuild` or `pnpm approve-builds` here — the ordering contract
+      # test (tests/unit/build/lite-ci-install-order.test.ts) fails on that.
+      - name: Install dependencies (no lifecycle scripts)
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       # Supply-chain gate: lockfile integrity/host policy plus pnpm's own manifest/lock
-      # consistency check. Runs before typecheck/tests so a bad lockfile fails the job early.
-      # NOTE: this is detective with respect to install scripts (deps are already installed);
-      # the preventive ordering is tracked in #23.
+      # consistency check, before any module loading happens.
       - name: Lockfile supply-chain policy (pnpm)
         run: pnpm run check:lockfile
 
-      - name: Lockfile policy regression tests
+      # Proves the prebuilt modules the suites depend on actually work without their scripts,
+      # and that the DB factory selects better-sqlite3 instead of the node:sqlite/sql.js
+      # fallback (which would mask a broken prebuild).
+      - name: Native module smoke (prebuilt artifacts only)
+        env:
+          OMNIROUTE_LITE_CI_NATIVE_SMOKE: "1"
         run: |
           node --import tsx/esm \
             --test --test-force-exit --test-concurrency=1 \
-            tests/unit/build/check-lockfile.test.ts
+            tests/unit/build/lite-ci-native-smoke.test.ts
+
+      - name: Lockfile + CI wiring contract tests
+        run: |
+          node --import tsx/esm \
+            --test --test-force-exit --test-concurrency=1 \
+            tests/unit/build/check-lockfile.test.ts \
+            tests/unit/build/lite-ci-install-order.test.ts
 
       - name: Typecheck (core)
         run: pnpm run typecheck:core
